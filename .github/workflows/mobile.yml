@@ -82,6 +82,11 @@ on:
       - "docs/**"
       - "scripts/readme/**"
   workflow_dispatch:
+    inputs:
+      reuse_run:
+        description: "Fork: skip the build and put the arm64 APK of this earlier run (its run id) on a draft release"
+        type: string
+        default: ""
 
 # Keyed by the calling workflow too, so a call from a release never shares
 # a group with a pull request's run. A pull request's run, or a push's, is
@@ -100,6 +105,8 @@ env:
 jobs:
   android:
     name: Android ${{ matrix.abi }}
+    # Fork: no build when a hand-started run only republishes an earlier APK.
+    if: ${{ !inputs.reuse_run }}
     runs-on: ubuntu-24.04
     # Fork: a fork starts with no FFmpeg and no Rust cache, so the first
     # build compiles everything; 90 minutes is too tight for that.
@@ -634,3 +641,35 @@ jobs:
           name: smoke-ios-simulator
           path: smoke-ios/
           if-no-files-found: warn
+
+  # Fork: the APK on a draft release of the fork, where it can be fetched
+  # from outside GitHub's artifact storage. A draft is seen only by those
+  # who can push here, and makes no tag until someone publishes it.
+  publish:
+    name: "Fork: APK to a draft release"
+    needs: android
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && (inputs.reuse_run != '' || needs.android.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 10
+        with:
+          name: Concat-android-arm64
+          path: apk
+          run-id: ${{ inputs.reuse_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.reuse_run || github.run_id }}
+        run: |
+          set -euo pipefail
+          ls -l apk
+          gh release create "fork-apk-run-$SOURCE_RUN" apk/*.apk \
+            --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+            --title "Concat arm64 (Fork-Build, Lauf $SOURCE_RUN)" \
+            --notes "arm64-APK aus Lauf $SOURCE_RUN, signiert mit dem Schlüssel dieses Laufs."
