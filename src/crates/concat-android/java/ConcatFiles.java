@@ -15,10 +15,12 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Log;
@@ -64,6 +66,17 @@ public class ConcatFiles extends Fragment {
     private static final int REQUEST_PICK = 0xC0C4;
     private static final int REQUEST_MICROPHONE = 0xC0C5;
     private static final String TAG = "concat-files";
+
+    /**
+     * Fork: room a copy leaves free. A phone filled to the last byte stops
+     * saving anything, the copy's own last chunk included, so a file that
+     * would leave less than this is not started.
+     */
+    private static final long RESERVE = 256L * 1024 * 1024;
+    /** Fork: how often a copy says how far it has come. */
+    private static final long PROGRESS_EVERY_MS = 200;
+    /** Fork: set by {@link #cancelImport}; the copy stops at its next chunk. */
+    private static volatile boolean cancelled;
 
     /**
      * Where a finished export goes, under the phone's storage: Movies/Concat.
@@ -766,6 +779,28 @@ public class ConcatFiles extends Fragment {
     public static native void filesPicked(String[] paths);
 
     /**
+     * Fork, registered from Rust: how far the copy into the app has come.
+     * {@code name} holds the file's display name (an array, so the Rust side
+     * reads it the way it reads {@link #filesPicked}); {@code index} counts
+     * from 0 among {@code count} picked files; {@code total} is -1 when the
+     * provider does not say how big the file is.
+     */
+    public static native void importProgress(String[] name, int index, int count, long copied, long total);
+
+    /**
+     * Fork, registered from Rust: a picked file that was not copied.
+     * {@code what} is {kind, name, reason}, kind one of "space", "failed"
+     * or "cancelled"; {@code size} is the file's size and {@code free} the
+     * room there was, in bytes, where known.
+     */
+    public static native void importProblem(String[] what, long size, long free);
+
+    /** Fork: from Rust, when the person stops the copy on its card. */
+    public static void cancelImport() {
+        cancelled = true;
+    }
+
+    /**
      * Shows the picker, offering the MIME types in {@code types} - comma
      * separated, "video/*,audio/*" - or every file when it is empty. From
      * any thread; the fragment is added on the UI thread.
@@ -834,18 +869,98 @@ public class ConcatFiles extends Fragment {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                cancelled = false;
                 List<String> paths = new ArrayList<String>();
                 File dir = new File(activity.getExternalFilesDir(null), "Imported");
                 dir.mkdirs();
-                for (Uri uri : uris) {
-                    File out = unique(dir, displayName(activity, uri));
-                    if (copy(activity, uri, out)) {
-                        paths.add(out.getAbsolutePath());
+                int count = uris.size();
+                for (int index = 0; index < count && !cancelled; index++) {
+                    Uri uri = uris.get(index);
+                    String name = displayName(activity, uri);
+                    long size = sizeOf(activity, uri);
+                    // Fork: a file that cannot fit is not started. Copied
+                    // anyway it filled the phone to the brim and failed at
+                    // the end, minutes later, without a word.
+                    long free = dir.getUsableSpace();
+                    if (size > 0 && size + RESERVE > free) {
+                        Log.w(TAG, "not copying " + name + ": " + size + " bytes, " + free + " free");
+                        problem("space", name, size, free, "");
+                        continue;
                     }
+                    File out = unique(dir, name);
+                    String[] why = copy(activity, uri, out, name, index, count, size);
+                    if (why == null) {
+                        paths.add(out.getAbsolutePath());
+                    } else if (!cancelled) {
+                        // After the copy's own clean-up, so the room it
+                        // reports is the room there is now.
+                        problem(why[0], name, size, dir.getUsableSpace(), why[1]);
+                    }
+                }
+                if (cancelled) {
+                    problem("cancelled", "", 0, 0, "");
                 }
                 filesPicked(paths.toArray(new String[0]));
             }
         }, TAG).start();
+    }
+
+    /** Fork: the picked file's size in bytes, or -1 when nothing says. */
+    private static long sizeOf(Activity activity, Uri uri) {
+        Cursor cursor = null;
+        try {
+            cursor = activity.getContentResolver().query(
+                    uri, new String[] { OpenableColumns.SIZE }, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (column >= 0 && !cursor.isNull(column)) {
+                    long size = cursor.getLong(column);
+                    if (size > 0) {
+                        return size;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        // A provider that leaves the column out may still know the length.
+        AssetFileDescriptor descriptor = null;
+        try {
+            descriptor = activity.getContentResolver().openAssetFileDescriptor(uri, "r");
+            if (descriptor != null && descriptor.getLength() > 0) {
+                return descriptor.getLength();
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (descriptor != null) {
+                try {
+                    descriptor.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+        return -1;
+    }
+
+    /** Fork: {@link #importProgress}, never throwing into the copy. */
+    private static void progress(String name, int index, int count, long copied, long total) {
+        try {
+            importProgress(new String[] { name }, index, count, copied, total);
+        } catch (Throwable ignored) {
+            // Not registered (an older Rust side): the copy goes on unseen.
+        }
+    }
+
+    /** Fork: {@link #importProblem}, never throwing into the copy. */
+    private static void problem(String kind, String name, long size, long free, String reason) {
+        try {
+            importProblem(new String[] { kind, name, reason == null ? "" : reason }, size, free);
+        } catch (Throwable ignored) {
+            // As above: the log line is all there is.
+        }
     }
 
     /** The name the picker showed for the file, or one made from the URI. */
@@ -893,28 +1008,59 @@ public class ConcatFiles extends Fragment {
         }
     }
 
-    private static boolean copy(Activity activity, Uri uri, File out) {
+    /**
+     * Copies {@code uri} to {@code out}, saying how far it has come. Null
+     * when the whole file is there; else {kind, reason} - "space" or
+     * "failed" - with the part copied deleted. A cancel stops it at the
+     * next chunk and answers {"cancelled", ""}.
+     *
+     * Fork: the screen is kept on for the length of the copy. A phone that
+     * dimmed and locked half way through a film put Concat in the
+     * background, where the system ended it along with the provider it was
+     * reading from, and the copy was lost.
+     */
+    private static String[] copy(Activity activity, Uri uri, File out,
+            String name, int index, int count, long size) {
         InputStream in = null;
         OutputStream os = null;
+        boolean whole = false;
+        long copied = 0;
+        keepScreenOn(activity, true);
         try {
             in = activity.getContentResolver().openInputStream(uri);
             if (in == null) {
-                return false;
+                return new String[] { "failed", "the provider gave nothing to read" };
             }
             os = new FileOutputStream(out);
-            byte[] buffer = new byte[1 << 16];
+            // A megabyte at a time: a film is thousands of these, and every
+            // read is a trip to the provider's process.
+            byte[] buffer = new byte[1 << 20];
             int read;
+            long said = 0;
+            progress(name, index, count, 0, size);
             while ((read = in.read(buffer)) > 0) {
+                if (cancelled) {
+                    return new String[] { "cancelled", "" };
+                }
                 os.write(buffer, 0, read);
+                copied += read;
+                long now = SystemClock.uptimeMillis();
+                if (now - said >= PROGRESS_EVERY_MS) {
+                    said = now;
+                    progress(name, index, count, copied, size);
+                }
             }
-            return true;
+            progress(name, index, count, copied, size > 0 ? size : copied);
+            whole = true;
+            return null;
         } catch (IOException | RuntimeException e) {
             // A provider that revokes its grant mid-copy throws a
             // SecurityException, not an IOException; uncaught on this
             // thread it closed the app and lost the rest of the pick.
-            Log.w(TAG, "could not copy " + uri + ": " + e);
-            out.delete();
-            return false;
+            Log.w(TAG, "could not copy " + uri + " after " + copied + " bytes: " + e);
+            String message = String.valueOf(e.getMessage());
+            boolean full = message.contains("ENOSPC") || message.contains("No space left");
+            return new String[] { full ? "space" : "failed", message };
         } finally {
             try {
                 if (in != null) in.close();
@@ -924,6 +1070,10 @@ public class ConcatFiles extends Fragment {
                 if (os != null) os.close();
             } catch (IOException ignored) {
             }
+            if (!whole) {
+                out.delete();
+            }
+            keepScreenOn(activity, false);
         }
     }
 }
