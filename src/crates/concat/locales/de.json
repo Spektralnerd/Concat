@@ -1067,5 +1067,13 @@
   "voices.styles": "Stile",
   "voices.stylesHint": "Ein Stil ist eine Stimme mit Effekten. Wähle einen, um in ihm zu schreiben: Die Effekte landen auf dem Sprachclip, wo du sie ändern kannst.",
   "voices.voices": "Stimmen",
-  "voices.yours": "Deine Stimmen"
+  "voices.yours": "Deine Stimmen",
+  "importCopy.title": "„{0}“ wird in Concat kopiert",
+  "importCopy.titleMany": "„{0}“ wird in Concat kopiert ({1} von {2})",
+  "importCopy.detail": "{0} von {1} · {2} %",
+  "importCopy.detailUnknown": "{0} kopiert",
+  "importCopy.cancel": "Abbrechen",
+  "importCopy.cancelled": "Import abgebrochen",
+  "importCopy.noSpace": "Nicht genug Speicher für „{0}“: Die Datei braucht {1}, frei sind nur {2}. Concat kopiert jede Datei vor dem Import in seinen eigenen Ordner.",
+  "importCopy.failed": "„{0}“ konnte nicht in Concat kopiert werden: {1}"
 }

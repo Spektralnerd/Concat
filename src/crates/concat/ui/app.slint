@@ -78,6 +78,7 @@ import {
 } from "inspector/clip-inspector.slint";
 import { ParamFormat } from "inspector/controls.slint";
 import { ToastData, ToastLayer } from "primitives/toast.slint";
+import { ImportCopyData, ImportCopyLayer } from "primitives/import-copy.slint";
 import { TooltipLayer } from "primitives/tooltip.slint";
 import { FontSearch } from "inspector/font-picker.slint";
 import { CaptionStyles } from "dialogs/captions.slint";
@@ -179,6 +180,7 @@ export {
     StartData,
     SystemFactData,
     ToastData,
+    ImportCopyData,
     ProjectSheetData,
     CaptionsSheetData,
     SpeechSheetData,
@@ -545,6 +547,11 @@ export component App inherits Window {
     in property <ToastData> toast;
     /// The notice with this token has gone from the screen.
     callback toast-gone(int);
+    /// Fork: the card while a phone copies picked files into the app. Set
+    /// from Rust (src/import_copy.rs).
+    in property <ImportCopyData> import-copy;
+    /// Fork: the card's Cancel.
+    callback import-copy-cancel();
 
     // The level feed is a Rust timer, and a property cannot reach across to
     // stop it, so the hover edge is forwarded as a callback: Rust arms the
@@ -1168,6 +1175,22 @@ export component App inherits Window {
     // for. Only its card takes events, so covering the window costs the
     // window nothing; and it is under the tooltip layer so the card's own
     // close button can be named over it.
+    //
+    // Fork: the import's copy card comes first, so a notice raised while it
+    // is up is drawn over it rather than under.
+    ImportCopyLayer {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        data: root.import-copy;
+        phone: root.phone;
+        inset-top: root.safe-area-insets.top;
+        inset-left: root.safe-area-insets.left;
+        inset-right: root.safe-area-insets.right;
+        cancel => { root.import-copy-cancel(); }
+    }
+
     ToastLayer {
         x: 0;
         y: 0;

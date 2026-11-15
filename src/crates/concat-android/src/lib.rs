@@ -180,17 +180,30 @@ mod java {
             )?
             .l()?;
         let class = JClass::cast_local(env, class)?;
-        // SAFETY: the signature is the Java declaration's, and the
+        // SAFETY: each signature is the Java declaration's, and each
         // function below takes exactly what it names.
-        let method = unsafe {
-            jni::NativeMethod::from_raw_parts(
-                jni_str!("filesPicked"),
-                jni_str!("([Ljava/lang/String;)V"),
-                super::picker::files_picked as *mut c_void,
-            )
+        let methods = unsafe {
+            [
+                jni::NativeMethod::from_raw_parts(
+                    jni_str!("filesPicked"),
+                    jni_str!("([Ljava/lang/String;)V"),
+                    super::picker::files_picked as *mut c_void,
+                ),
+                // Fork: the copy's progress and its problems.
+                jni::NativeMethod::from_raw_parts(
+                    jni_str!("importProgress"),
+                    jni_str!("([Ljava/lang/String;IIJJ)V"),
+                    super::picker::import_progress as *mut c_void,
+                ),
+                jni::NativeMethod::from_raw_parts(
+                    jni_str!("importProblem"),
+                    jni_str!("([Ljava/lang/String;JJ)V"),
+                    super::picker::import_problem as *mut c_void,
+                ),
+            ]
         };
         // SAFETY: as above.
-        unsafe { env.register_native_methods(&class, &[method]) }?;
+        unsafe { env.register_native_methods(&class, &methods) }?;
         env.new_global_ref(class)
     }
 }
@@ -219,6 +232,18 @@ mod picker {
 
     /// Hands the window's crate a picker that runs on this activity.
     pub fn install(app: &AndroidApp) {
+        // Fork: the import card's Cancel, which the copy in the Java hears
+        // at its next chunk.
+        let canceller = app.clone();
+        concat::install_import_canceller(Box::new(move || {
+            let asked = super::java::with_class(&canceller, |env, _activity, class| {
+                env.call_static_method(class, jni_str!("cancelImport"), jni_sig!("()V"), &[])?;
+                Ok(())
+            });
+            if let Err(error) = asked {
+                log::warn!("import: asking the copy to stop failed: {error}; it runs to its end");
+            }
+        }));
         let app = app.clone();
         concat::install_file_picker(Box::new(move |kinds, on_picked| {
             let previous = PENDING
@@ -305,9 +330,84 @@ mod picker {
                 Vec::new()
             }
         };
+        // Fork: the copy is over, however it went; its card goes.
+        concat::import_copy_finished();
         if let Some(pending) = PENDING.lock().ok().and_then(|mut slot| slot.take()) {
             pending(paths);
         }
+    }
+
+    /// Fork: the strings of a Java `String[]` a native method was handed;
+    /// none when it cannot be read.
+    ///
+    /// # Safety
+    ///
+    /// `array` must be a `String[]` argument of the Java call this runs in.
+    unsafe fn strings_of(array: sys::jobjectArray) -> Vec<String> {
+        let read = JavaVM::singleton().and_then(|vm| {
+            vm.attach_current_thread(|env| {
+                // SAFETY: the caller's promise.
+                let array = unsafe { JObjectArray::<JString>::from_raw(env, array) };
+                let mut out = Vec::new();
+                for index in 0..array.len(env)? {
+                    let item = array.get_element(env, index)?;
+                    out.push(item.mutf8_chars(env)?.to_string());
+                }
+                Ok::<_, jni::errors::Error>(out)
+            })
+        });
+        read.unwrap_or_else(|error| {
+            log::warn!("import: reading what the copy said failed: {error}");
+            Vec::new()
+        })
+    }
+
+    /// Fork: `ConcatFiles.importProgress`, on the thread the Java copies on.
+    pub(super) unsafe extern "system" fn import_progress(
+        _env: *mut sys::JNIEnv,
+        _class: sys::jclass,
+        name: sys::jobjectArray,
+        index: sys::jint,
+        count: sys::jint,
+        copied: sys::jlong,
+        total: sys::jlong,
+    ) {
+        // SAFETY: `name` is the String[] Java handed this frame.
+        let name = unsafe { strings_of(name) }.into_iter().next().unwrap_or_default();
+        concat::import_copy_progress(concat::ImportCopy {
+            name,
+            index: usize::try_from(index).unwrap_or(0),
+            count: usize::try_from(count).unwrap_or(1).max(1),
+            copied: u64::try_from(copied).unwrap_or(0),
+            total: u64::try_from(total).ok().filter(|total| *total > 0),
+        });
+    }
+
+    /// Fork: `ConcatFiles.importProblem`: a picked file that was not
+    /// copied, and why.
+    pub(super) unsafe extern "system" fn import_problem(
+        _env: *mut sys::JNIEnv,
+        _class: sys::jclass,
+        what: sys::jobjectArray,
+        size: sys::jlong,
+        free: sys::jlong,
+    ) {
+        // SAFETY: `what` is the String[] Java handed this frame.
+        let what = unsafe { strings_of(what) };
+        let field = |index: usize| what.get(index).cloned().unwrap_or_default();
+        let problem = match field(0).as_str() {
+            "space" => concat::ImportProblem::NoSpace {
+                name: field(1),
+                size: u64::try_from(size).unwrap_or(0),
+                free: u64::try_from(free).unwrap_or(0),
+            },
+            "cancelled" => concat::ImportProblem::Cancelled,
+            _ => concat::ImportProblem::Failed {
+                name: field(1),
+                reason: field(2),
+            },
+        };
+        concat::import_copy_problem(problem);
     }
 }
 

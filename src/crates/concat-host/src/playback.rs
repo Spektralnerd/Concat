@@ -540,7 +540,24 @@ struct Shared {
     /// show. Above 1.0 is a mix that clipped.
     peak_left: AtomicU32,
     peak_right: AtomicU32,
+    /// Fork: when the output last called back, in microseconds since
+    /// `epoch`. A running stream calls back every buffer, paused or not;
+    /// one that has not for [`SILENT`] is a dead device, not a slow one.
+    last_callback_micros: AtomicI64,
+    /// Fork: how many times the output has called back, for the log.
+    callbacks: AtomicU64,
 }
+
+/// Fork: how long the output may go without calling back before the clock
+/// stops waiting for it and runs on the time of day, so a phone whose
+/// sound has died shows the picture playing in silence instead of a frame
+/// frozen after a tenth of a second (Android 16, Nothing A015: the output
+/// opened without a word and never called back).
+const SILENT: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// Fork: how long a stream may go without calling back before the
+/// supervisor gives it up and builds another.
+const DEAD: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// The longest the clock runs on past the callback's last word. A callback
 /// comes every buffer, ten milliseconds or so; one that has not come in a
@@ -557,6 +574,8 @@ impl Shared {
             muted: AtomicBool::new(false),
             peak_left: AtomicU32::new(0),
             peak_right: AtomicU32::new(0),
+            last_callback_micros: AtomicI64::new(0),
+            callbacks: AtomicU64::new(0),
         }
     }
 
@@ -585,7 +604,26 @@ impl Shared {
             return position;
         }
         let run_on = self.now_micros() - self.origin_micros.load(Ordering::Relaxed);
-        (run_on as f64 / 1_000_000.0).clamp(position, position + COAST.as_secs_f64())
+        let run_on = run_on as f64 / 1_000_000.0;
+        // Fork: a device that has stopped calling back altogether no longer
+        // holds the clock; it runs on the time of day, in silence.
+        if self.device_silent() {
+            return run_on.max(position);
+        }
+        run_on.clamp(position, position + COAST.as_secs_f64())
+    }
+
+    /// Fork: the output has not called back for [`SILENT`].
+    fn device_silent(&self) -> bool {
+        let last = self.last_callback_micros.load(Ordering::Relaxed);
+        self.now_micros() - last > SILENT.as_micros() as i64
+    }
+
+    /// Fork: notes a callback, for the clock's fallback and the supervisor.
+    fn heard(&self) {
+        self.last_callback_micros
+            .store(self.now_micros(), Ordering::Relaxed);
+        self.callbacks.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -855,6 +893,11 @@ impl Playback {
 
     /// Stops playing; the position holds.
     pub fn pause(&self) {
+        // Fork: a clock running on the time of day, with no device to land
+        // it, is landed here where it stopped.
+        if self.shared.playing.load(Ordering::Relaxed) && self.shared.device_silent() {
+            self.shared.stamp(self.shared.position_now());
+        }
         self.shared.playing.store(false, Ordering::Relaxed);
         if self.fine.swap(false, Ordering::Relaxed) {
             fine_timer(false);
@@ -1462,6 +1505,10 @@ fn supervise_stream(
     let rx = Arc::new(Mutex::new(rx));
     let mut backoff = std::time::Duration::from_secs(1);
     let mut reported_missing = false;
+    // Fork: streams given up in a row for never calling back, which spaces
+    // the next attempt out so a phone whose sound is gone for good is not
+    // rebuilding a stream every second.
+    let mut dead_rebuilds: u32 = 0;
 
     loop {
         let host = cpal::default_host();
@@ -1484,6 +1531,18 @@ fn supervise_stream(
                 // in system settings).
                 let failed = stream.failed;
                 let _stream = stream.stream;
+                // Fork: a new stream is given its grace before it is judged,
+                // and says in the log whether it came to life.
+                shared
+                    .last_callback_micros
+                    .store(shared.now_micros(), Ordering::Relaxed);
+                let calls_at_start = shared.callbacks.load(Ordering::Relaxed);
+                let mut judged = false;
+                let mut dead = false;
+                // Seconds this stream has kept calling back; ten of them
+                // make it a stream that works, and clear the count of dead
+                // ones before it.
+                let mut healthy: u32 = 0;
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(1000));
                     if failed.load(Ordering::Relaxed) {
@@ -1492,6 +1551,40 @@ fn supervise_stream(
                             "audio stream failed; rebuilding".to_owned(),
                         );
                         break;
+                    }
+                    let calls = shared.callbacks.load(Ordering::Relaxed) - calls_at_start;
+                    if !judged {
+                        judged = true;
+                        if calls > 0 {
+                            log::info!(
+                                "audio: the output on {device_name} is running · {calls} callback(s) in its first second"
+                            );
+                        } else {
+                            log::warn!(
+                                "audio: the output on {device_name} has not called back in its first second"
+                            );
+                        }
+                    }
+                    let quiet_micros = shared.now_micros()
+                        - shared.last_callback_micros.load(Ordering::Relaxed);
+                    if quiet_micros > DEAD.as_micros() as i64 {
+                        dead_rebuilds += 1;
+                        let message = format!(
+                            "audio output stopped answering ({calls} callback(s) since it opened, none for {:.1} s); the picture plays on without sound while it is rebuilt",
+                            quiet_micros as f64 / 1_000_000.0
+                        );
+                        // Said once on screen; the log keeps every attempt.
+                        if dead_rebuilds == 1 {
+                            report(events.as_ref(), message);
+                        } else {
+                            log::warn!("{message} · attempt {dead_rebuilds}");
+                        }
+                        dead = true;
+                        break;
+                    }
+                    healthy += 1;
+                    if healthy >= 10 {
+                        dead_rebuilds = 0;
                     }
                     let current = cpal::default_host()
                         .default_output_device()
@@ -1506,6 +1599,30 @@ fn supervise_stream(
                     }
                 }
                 // `_stream` drops here, releasing the device before rebuild.
+                if dead {
+                    // Fork: the dead stream goes, and the next is built a
+                    // while later - longer each time in a row. Meanwhile a
+                    // playing clock runs on the time of day; it is landed
+                    // where it has got to just before the rebuild, so the
+                    // new stream starts there and not back at the last play.
+                    drop(_stream);
+                    let wait = std::time::Duration::from_secs(1 << dead_rebuilds.min(5));
+                    std::thread::sleep(wait);
+                    // What the window sent meanwhile: play, pause and seek
+                    // are on the shared clock already (the window stamps
+                    // it itself); only the clip set is the callback's, and
+                    // a message left queued pins the PCM it names.
+                    if let Ok(receiver) = rx.try_lock() {
+                        while let Ok(message) = receiver.try_recv() {
+                            if let Msg::SetClips(next) = message {
+                                *locked(&last_active) = next;
+                            }
+                        }
+                    }
+                    if shared.playing.load(Ordering::Relaxed) {
+                        shared.stamp(shared.position_now());
+                    }
+                }
             }
             Err(error) => {
                 // Once, not every retry: a machine with no sound card would
@@ -1542,6 +1659,33 @@ fn supervise_stream(
     }
 }
 
+/// The output's config: its default, except that a phone is asked for
+/// 48 kHz stereo float where it offers it - every phone's own rate, and the
+/// rate of the audio cache. Fork: cpal's heuristics pick 44.1 kHz on
+/// Android, which routes the stream through the framework's resampler.
+fn preferred_output_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
+    use cpal::traits::DeviceTrait;
+
+    #[cfg(target_os = "android")]
+    {
+        let wanted = cpal::SampleRate(PCM_RATE);
+        if let Ok(configs) = device.supported_output_configs() {
+            for range in configs {
+                if range.channels() == 2
+                    && range.sample_format() == cpal::SampleFormat::F32
+                    && range.min_sample_rate() <= wanted
+                    && wanted <= range.max_sample_rate()
+                {
+                    return Ok(range.with_sample_rate(wanted));
+                }
+            }
+        }
+    }
+    device
+        .default_output_config()
+        .map_err(|error| format!("no default output config: {error}"))
+}
+
 /// A built, playing stream plus its error flag.
 struct BuiltStream {
     stream: cpal::Stream,
@@ -1557,13 +1701,16 @@ fn build_stream(
     events: &Arc<dyn PlaybackEvents>,
     last_active: &Arc<Mutex<Vec<ActiveClip>>>,
 ) -> Result<BuiltStream, String> {
-    use cpal::traits::DeviceTrait;
-
-    let config = device
-        .default_output_config()
-        .map_err(|error| format!("no default output config: {error}"))?;
+    let config = preferred_output_config(device)?;
     let sample_format = config.sample_format();
     let config: cpal::StreamConfig = config.into();
+    // Fork: what the output is opened with, so a phone's silence can be
+    // read from its log.
+    log::info!(
+        "audio: opening the output at {} Hz, {} channel(s), {sample_format:?}",
+        config.sample_rate.0,
+        config.channels
+    );
 
     match sample_format {
         cpal::SampleFormat::F32 => {
@@ -1609,6 +1756,9 @@ where
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
+                // Fork: two relaxed stores, for the clock's fallback and the
+                // supervisor's watch.
+                shared.heard();
                 let mut sought = false;
                 // try_lock, not lock: the audio callback must never block.
                 // Contention only exists while the supervisor swaps streams,
@@ -1729,7 +1879,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{COAST, Shared, sweep_plan, wav_data_range};
+    use super::{COAST, SILENT, Shared, sweep_plan, wav_data_range};
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -1741,6 +1891,9 @@ mod tests {
 
         shared.playing.store(true, Ordering::Relaxed);
         shared.stamp(5.0);
+        // Fork: a device that has called back just now, so the clock waits
+        // for it rather than running on the time of day.
+        shared.heard();
         std::thread::sleep(std::time::Duration::from_millis(20));
         let now = shared.position_now();
         assert!(now > 5.015 && now < 5.0 + COAST.as_secs_f64(), "{now}");
@@ -1761,6 +1914,21 @@ mod tests {
         assert!(
             (5.01..=5.01 + COAST.as_secs_f64()).contains(&between),
             "{between}"
+        );
+    }
+
+    #[test]
+    fn a_device_that_never_calls_back_lets_the_clock_run_on() {
+        // Fork: no callback at all, as on the phone whose output opened and
+        // then said nothing: the picture plays on the time of day.
+        let shared = Shared::new();
+        shared.playing.store(true, Ordering::Relaxed);
+        shared.stamp(5.0);
+        std::thread::sleep(SILENT + COAST + std::time::Duration::from_millis(50));
+        let now = shared.position_now();
+        assert!(
+            now > 5.0 + (SILENT + COAST).as_secs_f64(),
+            "the clock ran on: {now}"
         );
     }
 

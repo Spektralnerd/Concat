@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Spektralnerd (fork of jub0t/Concat)
+
+import { Theme } from "../theme/theme.slint";
+import { I18n } from "../i18n.slint";
+import { Button, Progress } from "modal.slint";
+
+// Fork: the card a phone shows while it copies picked files into the app.
+//
+// A phone's picker hands over documents, so each picked file is copied into
+// the app's own folder before it is imported, and a film takes minutes. The
+// card sits at the top, clear of the notice at the bottom, says which file
+// and how far, and offers to stop. Rust spells every line (src/import_copy.rs);
+// this layer only draws them.
+
+/// The copy under way, as Rust hands it down.
+export struct ImportCopyData {
+    /// Up while a copy runs.
+    active: bool,
+    /// Which file: "Copying “film.mkv” into Concat (1 of 2)".
+    title: string,
+    /// How far: "2.9 GB of 7.0 GB · 42 % · 1:20 left".
+    detail: string,
+    /// The bar's fill, 0..1; below 0 when the phone does not say how big
+    /// the file is.
+    fraction: float,
+}
+
+export component ImportCopyLayer inherits Rectangle {
+    in property <ImportCopyData> data;
+    /// A phone's card is as wide as the screen allows.
+    in property <bool> phone;
+    /// The screen's own edges, on a phone: the card sits 16px inside them.
+    in property <length> inset-top;
+    in property <length> inset-left;
+    in property <length> inset-right;
+
+    /// The card's Cancel.
+    callback cancel();
+
+    // The layer takes no events: only the card has a TouchArea, and the
+    // card is only there while a copy runs.
+    background: transparent;
+
+    property <length> edge: 16px;
+    property <length> room: root.width - root.inset-left - root.inset-right - 2 * root.edge;
+
+    if root.data.active: Rectangle {
+        width: root.phone ? root.room : Math.min(root.room, 460px);
+        x: root.phone ? root.inset-left + root.edge : (root.width - self.width) / 2;
+        y: root.inset-top + root.edge;
+        height: column.preferred-height;
+        border-radius: Theme.r-lg;
+        // Raised and ringed like the notice, for the same reason: it floats
+        // over panes of the same grey.
+        background: Theme.raised;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        drop-shadow-blur: 18px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: Theme.dark ? #00000066 : #00000024;
+
+        // Takes the card's own presses, so a tap on it does not reach the
+        // pane underneath. Declared first, so the Cancel is above it.
+        TouchArea { }
+
+        column := VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            Text {
+                text: root.data.title;
+                color: Theme.fg;
+                font-size: Theme.fs;
+                font-weight: Theme.weight-title;
+                overflow: elide;
+            }
+
+            Progress {
+                value: Math.max(0, root.data.fraction);
+                live: true;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.data.detail;
+                    color: Theme.fg-muted;
+                    font-size: Theme.fs-sm;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                Button {
+                    label: I18n.t("importCopy.cancel");
+                    ghost: true;
+                    clicked => { root.cancel(); }
+                }
+            }
+        }
+    }
+}

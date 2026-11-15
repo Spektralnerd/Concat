@@ -1086,5 +1086,13 @@
   "voices.styles": "Styles",
   "voices.stylesHint": "A style is a voice with effects on it. Pick one to write in it: the effects go on the speech clip, where you can change them.",
   "voices.voices": "Voices",
-  "voices.yours": "Your voices"
+  "voices.yours": "Your voices",
+  "importCopy.title": "Copying “{0}” into Concat",
+  "importCopy.titleMany": "Copying “{0}” into Concat ({1} of {2})",
+  "importCopy.detail": "{0} of {1} · {2} %",
+  "importCopy.detailUnknown": "{0} copied",
+  "importCopy.cancel": "Cancel",
+  "importCopy.cancelled": "Import cancelled",
+  "importCopy.noSpace": "Not enough space for “{0}”: it needs {1} and the phone has {2} free. Concat copies every file into its own folder before importing it.",
+  "importCopy.failed": "Could not copy “{0}” into Concat: {1}"
 }

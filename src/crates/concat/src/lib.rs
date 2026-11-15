@@ -40,6 +40,15 @@ mod gpu;
 mod grading;
 mod host;
 mod i18n;
+/// Fork: the card while a phone copies picked files into the app; see the
+/// module.
+mod import_copy;
+/// Fork: how the phone's crate reports a picked file's copy into the app,
+/// and how the card's Cancel reaches it. See `import_copy`.
+pub use import_copy::{
+    ImportCanceller, ImportCopy, ImportProblem, import_copy_finished, import_copy_problem,
+    import_copy_progress, install_import_canceller,
+};
 /// The iPhone's pickers and its way to Photos; see the module.
 #[cfg(target_os = "ios")]
 mod ios;
@@ -2274,6 +2283,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_toast_gone(|token| {
         Shell::with(|shell, _app| shell.studio.borrow_mut().toast.gone(token));
     });
+    // Fork: the import card's Cancel. The phone stops the copy and reports
+    // its end, which takes the card down; nothing is published here.
+    app.on_import_copy_cancel(|| import_copy::cancel());
     app.on_settings_show_log(on_window!(|state| {
         state.handle(Msg::Settings(SettingsMsg::ShowLog));
     }));
