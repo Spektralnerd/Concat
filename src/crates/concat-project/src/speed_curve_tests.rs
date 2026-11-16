@@ -657,7 +657,7 @@ fn a_clip_given_other_media_keeps_its_curve() {
 fn the_presets_are_these_shapes_in_this_order() {
     /// A preset's id, its points and the mean speed they make.
     type Shipped = (&'static str, &'static [(f64, f64)], f64);
-    let expected: [Shipped; 6] = [
+    let expected: [Shipped; 7] = [
         (
             "montage",
             &[
@@ -718,6 +718,7 @@ fn the_presets_are_these_shapes_in_this_order() {
             &[(0.0, 1.0), (0.7, 1.0), (0.88, 4.0), (1.0, 8.0)],
             1.87,
         ),
+        ("velocity", &[(0.0, 3.0), (0.2, 0.3), (1.0, 0.3)], 0.57),
     ];
     assert_eq!(SPEED_PRESETS.len(), expected.len());
     for (shipped, (id, points, mean)) in SPEED_PRESETS.iter().zip(expected) {

@@ -193,7 +193,7 @@ const fn shape(id: &'static str, label: &'static str, points: &'static [(f64, f6
 }
 
 /// The shipped shapes, in the order the interface lists them.
-pub const SPEED_PRESETS: [Preset; 6] = [
+pub const SPEED_PRESETS: [Preset; 7] = [
     // Slow, a burst, slow, a burst, slow: two beats cut together.
     shape(
         "montage",
@@ -259,6 +259,13 @@ pub const SPEED_PRESETS: [Preset; 6] = [
         "flash-out",
         "speedRamp.flashOut",
         &[(0.0, 1.0), (0.7, 1.0), (0.88, 4.0), (1.0, 8.0)],
+    ),
+    // A fan edit's velocity: the shot comes in fast and brakes into slow
+    // motion for the rest of it, where smooth slow motion earns its keep.
+    shape(
+        "velocity",
+        "speedRamp.velocity",
+        &[(0.0, 3.0), (0.2, 0.3), (1.0, 0.3)],
     ),
 ];
 
