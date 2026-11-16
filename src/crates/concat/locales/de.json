@@ -1120,5 +1120,10 @@
   "projectZip.importFailed": "Die ZIP ließ sich nicht öffnen: {0}",
   "projectZip.busy": "Es läuft schon eine ZIP. Warte sie ab oder brich sie auf ihrer Karte ab.",
   "projectZip.dialogTitle": "Projekt als ZIP sichern",
-  "projectZip.family": "ZIP-Archiv"
+  "projectZip.family": "ZIP-Archiv",
+  "mediaPane.removeUnused": "Unbenutzte entfernen ({0})",
+  "mediaPane.removedUnusedOne": "Eine unbenutzte Datei entfernt.",
+  "mediaPane.removedUnusedMany": "{0} unbenutzte Dateien entfernt.",
+  "mediaPane.removedWithClip": "Aus dem Projekt entfernt, samt einem Clip in der Timeline. Rückgängig holt ihn zurück.",
+  "mediaPane.removedWithClips": "Aus dem Projekt entfernt, samt {0} Clips in der Timeline. Rückgängig holt sie zurück."
 }

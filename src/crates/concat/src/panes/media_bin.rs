@@ -47,6 +47,9 @@ pub enum MediaMsg {
     },
     Remove(i32),
     RemoveSelected,
+    /// Fork: every file nothing in the project uses leaves the bin - an
+    /// empty list again without a new project for it.
+    RemoveUnused,
     /// Files picked, dropped or handed over by the platform.
     Import(Vec<PathBuf>),
     /// The import's worker is done probing.
@@ -61,6 +64,27 @@ pub enum MediaMsg {
     },
     /// The phone's Media sheet opened: a pick starts from nothing.
     ClearPicks,
+}
+
+/// Fork: how many clips, on every timeline, play one of `ids` - what
+/// leaves with them when they leave the bin.
+fn clips_using(project: &Project, ids: &[String]) -> usize {
+    project
+        .timelines
+        .iter()
+        .flat_map(|timeline| timeline.clips.iter())
+        .filter(|clip| ids.contains(&clip.media_id))
+        .count()
+}
+
+/// Fork: says so when clips left with the files: they left the timeline
+/// too, which the bin does not show. Undo brings both back.
+fn say_clips_gone(studio: &mut Studio, clips: usize) {
+    match clips {
+        0 => {}
+        1 => studio.notify(&t("mediaPane.removedWithClip"), false),
+        many => studio.notify(&tf("mediaPane.removedWithClips", &[&many]), false),
+    }
 }
 
 /// The bin's state.
@@ -148,20 +172,60 @@ impl MediaBin {
                     .map(|item| item.id.clone())
                 {
                     self.selected.remove(&id);
+                    let clips = clips_using(studio.project(), std::slice::from_ref(&id));
                     studio.apply(Command::RemoveMedia { media_id: id });
+                    say_clips_gone(studio, clips);
                 }
             }
             MediaMsg::RemoveSelected => {
                 let doomed: Vec<String> = self.selected.drain().collect();
+                self.picked.clear();
                 if doomed.is_empty() {
                     return;
                 }
+                let clips = clips_using(studio.project(), &doomed);
+                log::info!(
+                    "bin: removing {} files and the {clips} clips that play them",
+                    doomed.len()
+                );
                 studio.apply(Command::Batch {
                     commands: doomed
                         .into_iter()
                         .map(|media_id| Command::RemoveMedia { media_id })
                         .collect(),
                 });
+                say_clips_gone(studio, clips);
+            }
+            MediaMsg::RemoveUnused => {
+                let doomed: Vec<String> = studio
+                    .project()
+                    .unused_media()
+                    .iter()
+                    .map(|item| item.id.clone())
+                    .collect();
+                if doomed.is_empty() {
+                    return;
+                }
+                for id in &doomed {
+                    self.selected.remove(id);
+                }
+                self.picked.retain(|id| !doomed.contains(id));
+                let count = doomed.len();
+                log::info!("bin: removing the {count} files nothing uses");
+                studio.apply(Command::Batch {
+                    commands: doomed
+                        .into_iter()
+                        .map(|media_id| Command::RemoveMedia { media_id })
+                        .collect(),
+                });
+                // Each key spelled out where it is used: scripts/locales.py
+                // finds the strings the source asks for by reading it.
+                let said = if count == 1 {
+                    t("mediaPane.removedUnusedOne")
+                } else {
+                    tf("mediaPane.removedUnusedMany", &[&count])
+                };
+                studio.notify(&said, false);
             }
             MediaMsg::Import(paths) => {
                 if paths.is_empty() || studio.session.is_none() {

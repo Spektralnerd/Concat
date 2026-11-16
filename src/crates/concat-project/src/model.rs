@@ -3748,6 +3748,36 @@ impl Project {
         self.media.iter().find(|item| item.id == media_id)
     }
 
+    /// Fork: the bin items something in the project shows or plays, on any
+    /// timeline: a clip's media, and a picture a clip or a timeline fills
+    /// its background with. What the bin's "Remove unused" keeps.
+    pub fn media_in_use(&self) -> std::collections::HashSet<&str> {
+        let mut used = std::collections::HashSet::new();
+        for timeline in &self.timelines {
+            if let Background::Image { media_id } = &timeline.background {
+                used.insert(media_id.as_str());
+            }
+            for clip in &timeline.clips {
+                used.insert(clip.media_id.as_str());
+                if let Some(Background::Image { media_id }) = &clip.background {
+                    used.insert(media_id.as_str());
+                }
+            }
+        }
+        used
+    }
+
+    /// Fork: the bin items nothing in the project uses (see
+    /// [`Project::media_in_use`]), in bin order. A template's slot is not
+    /// among them: it waits to be filled, and is the template's to keep.
+    pub fn unused_media(&self) -> Vec<&MediaItem> {
+        let used = self.media_in_use();
+        self.media
+            .iter()
+            .filter(|item| !item.placeholder && !used.contains(item.id.as_str()))
+            .collect()
+    }
+
     /// Returns every media item whose file does not exist on disk.
     pub fn missing_media(&self) -> Vec<MissingMedia> {
         self.media

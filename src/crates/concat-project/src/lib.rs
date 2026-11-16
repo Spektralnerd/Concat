@@ -3916,6 +3916,62 @@ mod tests {
     /// A song's beats are kept on its bin entry, saved with the project,
     /// tidied on the way in, refused with a NaN in them, and undone like
     /// any edit.
+    /// Fork: what nothing on any timeline uses is unused - a clip's media
+    /// and a background's picture are used - and removing it all takes the
+    /// bin back to what is in use, as one undoable edit.
+    #[test]
+    fn unused_media_is_what_nothing_uses_and_goes_in_one_edit() {
+        let (mut editor, used_id, _clip_id) = fixture();
+        let spare_id = editor
+            .apply(media("/b.mp3", 4.0, true))
+            .expect("adds")
+            .created_id
+            .expect("id");
+        let backdrop_id = editor
+            .apply(media("/c.png", 0.0, false))
+            .expect("adds")
+            .created_id
+            .expect("id");
+        let timeline_id = editor.project().active().id.clone();
+        editor
+            .apply(Command::SetTimelineBackground {
+                timeline_id,
+                background: crate::model::Background::Image {
+                    media_id: backdrop_id.clone(),
+                },
+            })
+            .expect("sets the background");
+        let unused: Vec<&str> = editor
+            .project()
+            .unused_media()
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect();
+        assert_eq!(unused, vec![spare_id.as_str()]);
+        assert!(editor.project().media_in_use().contains(used_id.as_str()));
+        assert!(
+            editor
+                .project()
+                .media_in_use()
+                .contains(backdrop_id.as_str())
+        );
+
+        let before = editor.project().clone();
+        let view = editor
+            .apply(Command::Batch {
+                commands: vec![Command::RemoveMedia {
+                    media_id: spare_id.clone(),
+                }],
+            })
+            .expect("removes");
+        assert!(view.applied);
+        assert!(editor.project().unused_media().is_empty());
+        assert_eq!(editor.project().media.len(), 2);
+        assert_eq!(editor.project().active().clips.len(), 1, "the clip stays");
+        assert!(editor.undo(), "undoes");
+        assert_eq!(editor.project(), &before);
+    }
+
     #[test]
     fn a_medias_beats_are_an_undoable_edit_that_round_trips() {
         use crate::beats::{BeatGrid, BeatMark, clip_beats};

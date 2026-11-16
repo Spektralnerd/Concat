@@ -1943,6 +1943,7 @@ impl Studio {
                 .count() as i32,
         );
         editor.set_media_selected_count(self.media.selected.len() as i32);
+        editor.set_media_unused_count(self.project().unused_media().len() as i32);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);
@@ -2474,6 +2475,16 @@ impl Studio {
             rows.push(rule());
         }
         rows.push(action("remove", t("common.remove"), Glyph::Trash, true));
+        // Fork: the whole bin's clean-up, from any card's menu.
+        let unused = self.project().unused_media().len();
+        if unused > 0 {
+            rows.push(action(
+                "remove-unused",
+                tf("mediaPane.removeUnused", &[&unused]),
+                Glyph::Trash,
+                true,
+            ));
+        }
         rows
     }
 
@@ -2495,6 +2506,9 @@ impl Studio {
             "add" => self.place_at_playhead(&format!("media:{row}")),
             "remove" => self.handle(crate::panes::Msg::Media(
                 crate::panes::media_bin::MediaMsg::Remove(row),
+            )),
+            "remove-unused" => self.handle(crate::panes::Msg::Media(
+                crate::panes::media_bin::MediaMsg::RemoveUnused,
             )),
             "range-auto" => {
                 self.apply(range(None));

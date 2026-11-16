@@ -78,6 +78,8 @@ export global Editor {
     in-out property <int> media-count-speech;
     in-out property <int> media-count-processed;
     in-out property <int> media-selected-count;
+    /// Fork: how many of the bin's files nothing in the project uses.
+    in-out property <int> media-unused-count;
     in-out property <bool> importing;
     /// What the bin is narrowed to. Rust's, so the editor can point the
     /// bin at a file it just made; the sidebar reports a pick through
@@ -98,6 +100,8 @@ export global Editor {
         from-row: int, to-row: int, additive: bool);
     callback media-remove(id: int);
     callback media-remove-selected();
+    /// Fork: every file nothing in the project uses leaves the bin.
+    callback media-remove-unused();
     callback media-activate(id: int);
     /// The phone's Add: what is picked, in the order it was picked, onto
     /// the main lane at the playhead - or after its last clip, `at-end`.

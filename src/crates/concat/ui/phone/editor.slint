@@ -1261,6 +1261,13 @@ export component PhoneEditor inherits Rectangle {
                 items: Editor.media;
                 picked(id) => { Editor.media-select(id, true); }
             }
+            // Fork: the list emptied of what nothing uses, without a new
+            // project for it. What is used goes by picking it and Remove.
+            if Editor.media-unused-count > 0: SheetButton {
+                glyph: Glyph.trash;
+                label: I18n.t1("mediaPane.removeUnused", Editor.media-unused-count);
+                clicked => { Editor.media-remove-unused(); }
+            }
             // Room under the last row for the Add bar over it.
             if Editor.media-selected-count > 0: Rectangle {
                 height: root.add-bar-h - 12px;
@@ -1755,6 +1762,7 @@ export component PhoneEditor inherits Rectangle {
             padding-right: 12px;
             padding-top: 12px;
             padding-bottom: 12px;
+            spacing: 8px;
 
             SheetButton {
                 horizontal-stretch: 1;
@@ -1765,6 +1773,15 @@ export component PhoneEditor inherits Rectangle {
                     Editor.media-add-picked(root.media-at-end);
                     root.hide();
                 }
+            }
+
+            // Fork: what is picked leaves the project, with the clips that
+            // play it; Undo brings it all back.
+            SheetButton {
+                horizontal-stretch: 0;
+                glyph: Glyph.trash;
+                label: I18n.t("common.remove");
+                clicked => { Editor.media-remove-selected(); }
             }
         }
     }
