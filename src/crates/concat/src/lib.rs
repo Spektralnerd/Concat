@@ -874,6 +874,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_start_import_capcut(on_window!(|state| {
         state.handle(Msg::Start(StartMsg::ImportCapcut));
     }));
+    app.on_start_import_zip(on_window!(|state| {
+        state.handle(Msg::Start(StartMsg::ImportZip));
+    }));
     app.on_start_open_recent(on_window!(|state, path: SharedString| {
         state.handle(Msg::Start(StartMsg::OpenRecent(path.to_string())));
     }));
@@ -1796,6 +1799,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     }));
     editor.on_cutout_clear(on_window!(|state| {
         state.cutout_clear();
+    }));
+    editor.on_project_zip(on_window!(|state, with_media: bool| {
+        state.project_zip_export(with_media);
     }));
     editor.on_beats_detect(on_window!(|state| {
         state.beats_detect();

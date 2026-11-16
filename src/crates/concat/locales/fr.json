@@ -1095,5 +1095,22 @@
   "beats.show": "Show the grid",
   "beats.found": "{0} BPM, {1} beats found",
   "beats.noneFound": "No beat was found in this sound.",
-  "beats.failed": "The beats could not be found: {0}"
+  "beats.failed": "The beats could not be found: {0}",
+  "projectZip.save": "Save as ZIP",
+  "projectZip.saveLight": "Save as ZIP, without media",
+  "projectZip.import": "Import ZIP",
+  "projectZip.importNote": "A project saved as a ZIP, as a new project",
+  "projectZip.packing": "Saving “{0}” as a ZIP",
+  "projectZip.unpacking": "Opening “{0}”",
+  "projectZip.handing": "Putting the ZIP in Download/Concat",
+  "projectZip.saved": "Saved as a ZIP: {0}",
+  "projectZip.savedMissing": "Saved as a ZIP: {0}. {1} files were not there; the ZIP only names them.",
+  "projectZip.notHanded": "The ZIP is at {0}; it could not be put in Download: {1}",
+  "projectZip.stopped": "Stopped; nothing was left behind.",
+  "projectZip.failed": "The project could not be saved as a ZIP: {0}",
+  "projectZip.imported": "“{0}” is open, from its ZIP.",
+  "projectZip.importFailed": "The ZIP could not be opened: {0}",
+  "projectZip.busy": "A ZIP is already under way. Wait for it, or stop it on its card.",
+  "projectZip.dialogTitle": "Save the project as a ZIP",
+  "projectZip.family": "ZIP archive"
 }

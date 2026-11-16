@@ -1699,6 +1699,30 @@ export component PhoneEditor inherits Rectangle {
                     Editor.modify-project();
                 }
             }
+
+            // Fork: the project as one ZIP in Download/Concat, to keep
+            // past a reinstall or carry to another phone.
+            Rectangle { height: 10px; }
+
+            SheetButton {
+                glyph: Glyph.export;
+                label: I18n.t("projectZip.save");
+                clicked => {
+                    root.hide();
+                    Editor.project-zip(true);
+                }
+            }
+
+            Rectangle { height: 10px; }
+
+            SheetButton {
+                glyph: Glyph.export;
+                label: I18n.t("projectZip.saveLight");
+                clicked => {
+                    root.hide();
+                    Editor.project-zip(false);
+                }
+            }
         }
     }
 

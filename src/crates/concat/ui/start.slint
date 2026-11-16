@@ -1624,6 +1624,8 @@ component WideHome inherits Rectangle {
     callback compose();
     callback open();
     callback import-capcut();
+    /// Fork: open a project saved as a ZIP, as a new project.
+    callback import-zip();
     callback open-recent(path: string);
     callback forget-recent(path: string);
     callback reveal-recent(path: string);
@@ -1733,6 +1735,16 @@ component WideHome inherits Rectangle {
                         note: I18n.t("start.importCapcutNote");
                         enabled: !root.busy;
                         clicked => { root.import-capcut(); }
+                    }
+
+                    // Fork: a project saved as a ZIP, opened as a new one.
+                    CreateTile {
+                        width: root.tile-unit;
+                        glyph: Glyph.import;
+                        title: I18n.t("projectZip.import");
+                        note: I18n.t("projectZip.importNote");
+                        enabled: !root.busy;
+                        clicked => { root.import-zip(); }
                     }
                 }
 
@@ -1896,6 +1908,8 @@ component NarrowHome inherits Rectangle {
     callback compose();
     callback open();
     callback import-capcut();
+    /// Fork: open a project saved as a ZIP, as a new project.
+    callback import-zip();
     callback open-settings();
     callback open-recent(path: string);
     callback forget-recent(path: string);
@@ -1954,6 +1968,18 @@ component NarrowHome inherits Rectangle {
                         label: I18n.t("start.importCapcut");
                         enabled: !root.busy;
                         clicked => { root.import-capcut(); }
+                    }
+                }
+
+                // Fork: a project saved as a ZIP, opened as a new one - on
+                // a phone too, where it comes back after a reinstall.
+                VerticalLayout {
+                    alignment: center;
+                    BarAction {
+                        glyph: Glyph.import;
+                        label: I18n.t("projectZip.import");
+                        enabled: !root.busy;
+                        clicked => { root.import-zip(); }
                     }
                 }
 
@@ -2107,6 +2133,8 @@ export component StartScreen inherits Rectangle {
     callback open();
     /// Make a project of a CapCut draft, picked from CapCut's drafts.
     callback import-capcut();
+    /// Fork: open a project saved as a ZIP, as a new project.
+    callback import-zip();
     callback open-recent(path: string);
     callback forget-recent(path: string);
     callback reveal-recent(path: string);
@@ -2135,6 +2163,7 @@ export component StartScreen inherits Rectangle {
         compose => { root.compose(); }
         open => { root.open(); }
         import-capcut => { root.import-capcut(); }
+        import-zip => { root.import-zip(); }
         open-recent(path) => { root.open-recent(path); }
         forget-recent(path) => { root.forget-recent(path); }
         reveal-recent(path) => { root.reveal-recent(path); }
@@ -2156,6 +2185,7 @@ export component StartScreen inherits Rectangle {
         compose => { root.compose(); }
         open => { root.open(); }
         import-capcut => { root.import-capcut(); }
+        import-zip => { root.import-zip(); }
         open-settings => { root.open-settings(); }
         open-recent(path) => { root.open-recent(path); }
         forget-recent(path) => { root.forget-recent(path); }

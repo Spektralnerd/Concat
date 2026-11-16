@@ -1103,5 +1103,22 @@
   "beats.show": "Raster anzeigen",
   "beats.found": "{0} BPM, {1} Schläge erkannt",
   "beats.noneFound": "In diesem Ton wurde kein Beat gefunden.",
-  "beats.failed": "Die Beats konnten nicht erkannt werden: {0}"
+  "beats.failed": "Die Beats konnten nicht erkannt werden: {0}",
+  "projectZip.save": "Als ZIP sichern",
+  "projectZip.saveLight": "Als ZIP sichern, ohne Medien",
+  "projectZip.import": "ZIP importieren",
+  "projectZip.importNote": "Ein als ZIP gesichertes Projekt, als neues Projekt",
+  "projectZip.packing": "„{0}“ wird als ZIP gesichert",
+  "projectZip.unpacking": "„{0}“ wird geöffnet",
+  "projectZip.handing": "Die ZIP kommt nach Download/Concat",
+  "projectZip.saved": "Als ZIP gesichert: {0}",
+  "projectZip.savedMissing": "Als ZIP gesichert: {0}. {1} Dateien fehlten, die ZIP nennt nur ihren Pfad.",
+  "projectZip.notHanded": "Die ZIP liegt unter {0}, ließ sich aber nicht nach Download legen: {1}",
+  "projectZip.stopped": "Abgebrochen, es ist nichts liegen geblieben.",
+  "projectZip.failed": "Das Projekt ließ sich nicht als ZIP sichern: {0}",
+  "projectZip.imported": "„{0}“ ist aus der ZIP geöffnet.",
+  "projectZip.importFailed": "Die ZIP ließ sich nicht öffnen: {0}",
+  "projectZip.busy": "Es läuft schon eine ZIP. Warte sie ab oder brich sie auf ihrer Karte ab.",
+  "projectZip.dialogTitle": "Projekt als ZIP sichern",
+  "projectZip.family": "ZIP-Archiv"
 }

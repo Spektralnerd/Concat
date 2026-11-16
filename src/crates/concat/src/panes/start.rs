@@ -48,6 +48,9 @@ pub enum StartMsg {
     OpenChosen(PathBuf),
     /// Make a project of a CapCut draft, picked from CapCut's drafts.
     ImportCapcut,
+    /// Fork: open a project saved as a ZIP, picked from disk, as a new
+    /// project.
+    ImportZip,
     OpenRecent(String),
     ForgetRecent(String),
     /// Show a project's folder in the file manager.
@@ -328,6 +331,23 @@ impl StartPane {
                     move || platform::pick_folder(&title, &drafts),
                     |studio, _, _, folder| {
                         studio.handle(crate::panes::Msg::Start(StartMsg::OpenChosen(folder)));
+                    },
+                );
+            }
+            // Fork: the ZIP goes in beside the new projects, as a new one.
+            StartMsg::ImportZip => {
+                let location = self.location.clone();
+                if location.trim().is_empty() {
+                    studio.notify(&t("start.chooseWhereProjectFolder"), true);
+                    return;
+                }
+                crate::host::pick_files_then(
+                    t("projectZip.import"),
+                    Some((t("projectZip.family"), &["zip"])),
+                    move |studio, _, _, paths| {
+                        if let Some(archive) = paths.into_iter().next() {
+                            studio.project_zip_import(archive, location);
+                        }
                     },
                 );
             }

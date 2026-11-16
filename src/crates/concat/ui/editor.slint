@@ -551,6 +551,8 @@ export global Editor {
     in-out property <string> unread-notice;
     /// The panel's Modify button: open the project sheet.
     callback modify-project();
+    /// Fork: save the open project as a ZIP, with its media or without.
+    callback project-zip(with-media: bool);
 
     /// A press landed on a pane's floor - a lane, the stage, the bin's
     /// gutter, a clip. Whatever field had focus gives it up, the way a

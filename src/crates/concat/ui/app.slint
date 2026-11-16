@@ -284,6 +284,7 @@ export component App inherits Window {
     callback start-open();
     /// Make a project of a CapCut draft (#477).
     callback start-import-capcut();
+    callback start-import-zip();
     callback start-open-recent(path: string);
     callback start-forget-recent(path: string);
     callback start-reveal-recent(path: string);
@@ -797,6 +798,7 @@ export component App inherits Window {
                 compose => { root.start-compose(); }
                 open => { root.start-open(); }
                 import-capcut => { root.start-import-capcut(); }
+                import-zip => { root.start-import-zip(); }
                 open-settings => { root.open-settings(); }
                 open-recent(path) => { root.start-open-recent(path); }
                 forget-recent(path) => { root.start-forget-recent(path); }

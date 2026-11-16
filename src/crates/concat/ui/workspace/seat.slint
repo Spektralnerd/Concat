@@ -317,6 +317,7 @@ export component Seat inherits Rectangle {
             unread-count: Editor.unread-count;
             unread-notice: Editor.unread-notice;
             modify-project => { Editor.modify-project(); }
+            project-zip => { Editor.project-zip(true); }
 
             selected: Editor.selected-clip;
             transition: Editor.selected-transition;

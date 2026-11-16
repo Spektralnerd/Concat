@@ -69,12 +69,86 @@ pub fn install_import_canceller(cancel: ImportCanceller) {
 }
 
 /// The card's Cancel: the copy stops at its next chunk, and the phone then
-/// reports the end the usual way.
+/// reports the end the usual way. A project's ZIP being written or opened
+/// on the card is stopped instead.
 pub(crate) fn cancel() {
+    if let Some(job) = JOB
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+    {
+        log::info!("project zip: stopped on its card");
+        job.store(true, std::sync::atomic::Ordering::Relaxed);
+        return;
+    }
     log::info!("import: copy cancelled on its card");
     if let Some(cancel) = CANCELLER.get() {
         cancel();
     }
+}
+
+/// The stop of the project ZIP the card shows, while it shows one; see
+/// [`job_started`].
+static JOB: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = Mutex::new(None);
+
+/// A project's ZIP is being written or opened, and `cancel` stops it: the
+/// card's Cancel reaches it from now until [`job_finished`]. False when one
+/// is under way already, which keeps the card and its Cancel.
+pub(crate) fn job_started(cancel: std::sync::Arc<std::sync::atomic::AtomicBool>) -> bool {
+    let mut slot = JOB.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot.is_some() {
+        return false;
+    }
+    *slot = Some(cancel);
+    true
+}
+
+/// Puts the card up for a project ZIP, or moves it on: `title` over `done`
+/// bytes of `total`, with the time left once it can be told. From any
+/// thread.
+pub(crate) fn job_progress(title: String, done: u64, total: u64, started: Instant) {
+    let progress = ImportCopy {
+        name: String::new(),
+        index: 0,
+        count: 1,
+        copied: done,
+        total: Some(total),
+    };
+    let (_, detail, fraction) = card_text(&progress, started.elapsed().as_secs_f32());
+    let _ = slint::invoke_from_event_loop(move || {
+        Shell::with(|_shell, app| {
+            app.set_import_copy(ImportCopyData {
+                active: true,
+                title: title.into(),
+                detail: detail.into(),
+                fraction,
+            });
+        });
+    });
+}
+
+/// The card for a project ZIP over a step that has no bar to fill: `title`
+/// over `detail`, the bar running. From any thread.
+pub(crate) fn job_note(title: String, detail: String) {
+    let _ = slint::invoke_from_event_loop(move || {
+        Shell::with(|_shell, app| {
+            app.set_import_copy(ImportCopyData {
+                active: true,
+                title: title.into(),
+                detail: detail.into(),
+                fraction: -1.0,
+            });
+        });
+    });
+}
+
+/// Takes the card down after a project ZIP, and lets the next one start.
+/// From any thread.
+pub(crate) fn job_finished() {
+    *JOB.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    let _ = slint::invoke_from_event_loop(|| {
+        Shell::with(|_shell, app| app.set_import_copy(ImportCopyData::default()));
+    });
 }
 
 /// When the file being copied started, by its index: what the time left
@@ -133,9 +207,7 @@ pub fn import_copy_problem(problem: ImportProblem) {
             ),
             true,
         ),
-        ImportProblem::Failed { name, reason } => {
-            (tf("importCopy.failed", &[name, reason]), true)
-        }
+        ImportProblem::Failed { name, reason } => (tf("importCopy.failed", &[name, reason]), true),
         ImportProblem::Cancelled => (t("importCopy.cancelled"), false),
     };
     log::warn!("import: {problem:?}");

@@ -66,6 +66,7 @@ mod merge_words_tests;
 mod monitor;
 mod placing;
 mod project_files;
+mod project_zip;
 mod publish;
 mod speech;
 #[cfg(test)]

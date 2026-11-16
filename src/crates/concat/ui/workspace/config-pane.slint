@@ -166,6 +166,8 @@ export component ConfigPane inherits Rectangle {
     in property <string> unread-notice;
 
     callback modify-project();
+    /// Fork: save the project as a ZIP, with its media.
+    callback project-zip();
 
     /// The corner button: show something else in this pane's seat.
     callback pane-picked(kind: PaneKind);
@@ -600,6 +602,32 @@ export component ConfigPane inherits Rectangle {
                 modify-touch := TouchArea {
                     mouse-cursor: pointer;
                     clicked => { root.modify-project(); }
+                }
+            }
+
+            // Fork: the project as one ZIP, beside Modify.
+            zip := Rectangle {
+                x: modify.x - self.width - 8px;
+                y: (parent.height - self.height) / 2;
+                width: zip-label.width + 30px;
+                height: 30px;
+                border-radius: Theme.r;
+                background: zip-touch.has-hover ? Theme.field-hover : Theme.field;
+
+                animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+
+                zip-label := Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: I18n.t("projectZip.save");
+                    color: Theme.fg;
+                    font-size: Theme.fs;
+                    font-weight: Theme.weight-title;
+                }
+
+                zip-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.project-zip(); }
                 }
             }
         }
