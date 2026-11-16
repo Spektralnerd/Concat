@@ -21,6 +21,7 @@ import {
 import { TextPanel } from "../inspector/text-panel.slint";
 import { ShapePanel } from "../inspector/shape-panel.slint";
 import { BeatPanel } from "../inspector/beat-panel.slint";
+import { SmoothPanel } from "../inspector/smooth-panel.slint";
 import {
     ClipField, ClipKind, ClipTextField, SelectedClipData, SelectedTransitionData,
 } from "../timeline/model.slint";
@@ -818,6 +819,9 @@ export component ConfigPane inherits Rectangle {
                         cutout-clear => { root.cutout-clear(); }
                     }
 
+                    if root.selected.smooth-footage: SmoothPanel {
+                        selected: root.selected;
+                    }
                 }
 
                 if root.showing == "Animate": AnimatePanel {

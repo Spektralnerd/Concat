@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jareer Abdullah and Concat contributors
+
+import { I18n } from "../i18n.slint";
+import { Theme } from "../theme/theme.slint";
+import { Glyph } from "../icons.slint";
+import { Editor } from "../editor.slint";
+import { SelectedClipData } from "../timeline/model.slint";
+import { Row, Section, SectionBody, SectionHeader } from "../primitives/panel.slint";
+import { Button, Progress } from "../primitives/modal.slint";
+import { SegmentedControl } from "../primitives/segmented-control.slint";
+import { HelpButton, Note } from "controls.slint";
+
+/// Smooth slow motion: the clip pointed at a copy of its span with frames
+/// made in between its own, so a clip slowed down plays a fresh picture
+/// every frame instead of each one held. Ticked, the rows and the button
+/// come alive; with a copy made, the tick switches between it and the
+/// original. The same panel under Speed on the desk and on the phone's
+/// Speed sheet.
+export component SmoothPanel inherits VerticalLayout {
+    in property <SelectedClipData> selected;
+    /// The first section of its page, for its top edge.
+    in property <bool> first;
+
+    /// This clip's copy is being made: the button stops it.
+    property <bool> running: root.selected.smooth-progress >= 0;
+    property <bool> live: root.selected.smooth-on;
+
+    Section {
+        first: root.first;
+
+        SectionHeader {
+            title: I18n.t("smooth.title");
+            switchable: true;
+            on: root.selected.smooth-on;
+            switched(on) => { Editor.clip-smooth-set(on); }
+            HelpButton {
+                text: I18n.t("smooth.help");
+            }
+        }
+
+        SectionBody {
+            if root.running: VerticalLayout {
+                padding-left: Theme.pad;
+                padding-right: Theme.pad;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.selected.smooth-fetching
+                            ? I18n.t("smooth.fetchingModel")
+                            : I18n.t("smooth.working");
+                        color: Theme.fg;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "\{Math.floor(bar.shown * 100)}%";
+                        color: Theme.fg-muted;
+                        font-family: Theme.font-technical;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                }
+                bar := Progress {
+                    value: root.selected.smooth-progress;
+                    live: true;
+                }
+            }
+
+            if !root.running && root.selected.smooth-linked: Note {
+                text: root.selected.smooth-on
+                    ? I18n.t1("smooth.showingCopy", root.selected.smooth-made)
+                    : I18n.t("smooth.showingOriginal");
+            }
+
+            // Frames for each of the file's: two, four or eight.
+            Row {
+                label: I18n.t("smooth.frames");
+                SegmentedControl {
+                    horizontal-stretch: 1;
+                    options: ["2×", "4×", "8×"];
+                    current: root.selected.smooth-factor >= 8 ? 2 : root.selected.smooth-factor >= 4 ? 1 : 0;
+                    enabled: root.live && !root.running;
+                    changed(index) => {
+                        Editor.clip-smooth-factor(index == 2 ? 8 : index == 1 ? 4 : 2);
+                    }
+                }
+            }
+
+            if root.selected.smooth-rates != "": Row {
+                label: "";
+                Text {
+                    text: root.selected.smooth-rates;
+                    color: root.live ? Theme.fg : Theme.fg-muted;
+                    font-family: Theme.font-technical;
+                    font-size: Theme.fs-sm;
+                    vertical-alignment: center;
+                }
+            }
+
+            // How the frames between are made.
+            Row {
+                label: I18n.t("smooth.method");
+                SegmentedControl {
+                    horizontal-stretch: 1;
+                    options: [
+                        I18n.t("smooth.methodAi"),
+                        I18n.t("smooth.methodBlend"),
+                        I18n.t("smooth.methodClassic"),
+                    ];
+                    current: root.selected.smooth-method;
+                    enabled: root.live && !root.running;
+                    changed(index) => { Editor.clip-smooth-method(index); }
+                }
+            }
+
+            Note {
+                text: root.selected.smooth-method == 0
+                    ? I18n.t("smooth.aboutAi")
+                    : root.selected.smooth-method == 1
+                        ? I18n.t("smooth.aboutBlend")
+                        : I18n.t("smooth.aboutClassic");
+            }
+
+            Row {
+                Rectangle { horizontal-stretch: 1; }
+                Button {
+                    primary: !root.running;
+                    glyph: root.running ? Glyph.close : Glyph.speed-curve;
+                    label: root.running
+                        ? I18n.t("smooth.stop")
+                        : root.selected.smooth-linked
+                            ? I18n.t("smooth.makeAgain")
+                            : I18n.t("smooth.make");
+                    enabled: root.running || (root.live && !root.selected.smooth-busy);
+                    clicked => { Editor.clip-smooth-run(); }
+                }
+            }
+        }
+    }
+}

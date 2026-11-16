@@ -1207,6 +1207,7 @@ impl Studio {
                 .copied()
         });
         let mut enhance = self.enhance_readout(clip);
+        let smooth = self.smooth_readout(clip);
         let shape = clip.shape.clone().unwrap_or_default();
         let steady = self.stabilize_readout(clip);
         let enhance_preview = enhance.preview.is_some();
@@ -1445,6 +1446,26 @@ impl Studio {
                 .get(&clip.id)
                 .is_some_and(|(fetching, _)| *fetching),
             reverse_progress: self.reverse_jobs.get(&clip.id).copied().unwrap_or(-1.0),
+            smooth_progress: self
+                .smooth_jobs
+                .get(&clip.id)
+                .map(|(_, fraction)| *fraction)
+                .unwrap_or(-1.0),
+            smooth_fetching: self
+                .smooth_jobs
+                .get(&clip.id)
+                .is_some_and(|(fetching, _)| *fetching),
+            smooth_linked: clip.smooth.is_some(),
+            smooth_on: self.smooth_ticked(clip),
+            smooth_busy: !self.smooth_jobs.is_empty(),
+            smooth_footage: smooth.footage,
+            smooth_factor: smooth.factor,
+            smooth_method: concat_host::tween::Method::ALL
+                .iter()
+                .position(|method| *method == self.smooth_method)
+                .unwrap_or(0) as i32,
+            smooth_made: smooth.made.into(),
+            smooth_rates: smooth.rates.into(),
             enhance_linked: clip.enhanced.is_some(),
             enhance_on: self.enhance_ticked(clip),
             enhance_busy: !self.enhance_jobs.is_empty() || self.enhance_previewing.is_some(),

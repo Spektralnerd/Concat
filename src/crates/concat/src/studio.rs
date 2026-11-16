@@ -69,6 +69,7 @@ mod placing;
 mod project_files;
 mod project_zip;
 mod publish;
+mod smooth;
 mod speech;
 #[cfg(test)]
 mod speed_curve_tests;
@@ -1008,6 +1009,10 @@ pub fn set_changed<T>(held: T, next: T, same: fn(&T, &T) -> bool, set: impl FnOn
 /// clip it was made for, so a small trim after does not run off the copy.
 const ENHANCE_MARGIN: f64 = 1.0;
 
+/// Seconds of the original a smooth copy covers beyond each end of the clip
+/// it was made for, for the same reason.
+const SMOOTH_MARGIN: f64 = 1.0;
+
 /// The window's state. See the module docs for what is whose.
 pub struct Studio {
     pub host: Host,
@@ -1333,6 +1338,18 @@ pub struct Studio {
     /// a run leaves a copy, whose link then holds it. The window's, not
     /// the project's: a tick with nothing made is not worth an undo step.
     enhance_ticked: HashSet<String>,
+    /// Smooth slow motion at work, by clip id: whether the model is still
+    /// downloading, and how far along. One at a time, like every long job.
+    smooth_jobs: HashMap<String, (bool, f32)>,
+    /// The Smooth slow motion section's Frames - two, four or eight for
+    /// each of the file's - and its Method: the window's, carried from clip
+    /// to clip the way a tool's settings are; a copy made is named by its
+    /// own (see `concat_host::tween::target_for`).
+    smooth_factor: u32,
+    smooth_method: concat_host::tween::Method,
+    /// Clips whose section is ticked but that have no copy yet, as for
+    /// Enhance.
+    smooth_ticked: HashSet<String>,
     /// Reverse writing a clip's backwards copy, by clip: how far along.
     reverse_jobs: HashMap<String, f32>,
     /// A selection being rendered into one clip, with its own cancel flag.
@@ -1978,6 +1995,9 @@ fn command_kind(command: &Command) -> &'static str {
         Command::ReplaceClipMedia { .. } => "Replace clip's file",
         Command::SetClipEnhanced { on: true, .. } => "Enhance on",
         Command::SetClipEnhanced { .. } => "Enhance off",
+        Command::SmoothClip { .. } => "Smooth slow motion",
+        Command::SetClipSmooth { on: true, .. } => "Smooth slow motion on",
+        Command::SetClipSmooth { .. } => "Smooth slow motion off",
         Command::FreezeFrame { .. } => "Freeze frame",
         Command::MergeClips { .. } => "Merge",
         Command::ConsolidateClips { .. } => "Merge into one clip",
@@ -2165,6 +2185,9 @@ fn command_words(command: &Command) -> String {
             format!("{kind}, now {}", file_name_of(&item.path))
         }
         Command::FreezeFrame { time, .. } => format!("{kind} at {time:.2} s"),
+        Command::SmoothClip { item, factor, .. } => {
+            format!("{kind} {factor}x, now {}", file_name_of(&item.path))
+        }
         Command::MergeClips { clip_ids } | Command::RemoveClips { clip_ids, .. } => {
             format!("{kind} {}", clips_of(clip_ids.len()))
         }
@@ -3214,6 +3237,10 @@ impl Studio {
             enhance_preview: None,
             enhance_previewing: None,
             enhance_ticked: HashSet::new(),
+            smooth_jobs: HashMap::new(),
+            smooth_factor: 4,
+            smooth_method: concat_host::tween::Method::Motion,
+            smooth_ticked: HashSet::new(),
             reverse_jobs: HashMap::new(),
             merge_job: None,
             region_job: None,

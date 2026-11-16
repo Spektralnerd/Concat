@@ -50,6 +50,8 @@ pub struct Host {
     pub brushes: Arc<concat_host::Brushes>,
     /// The restoration model, and the enhanced copies it writes.
     pub enhancers: Arc<concat_host::Enhancers>,
+    /// The frame model, and the smooth slow motion copies it writes.
+    pub tweeners: Arc<concat_host::Tweeners>,
     pub reversers: Arc<concat_host::Reversers>,
     /// The Concat API on a socket, while the Automation page has it on. Its
     /// own sessions, apart from the window's: a caller edits projects of
@@ -75,6 +77,7 @@ impl Host {
             stabilizers: Arc::new(concat_host::Stabilizers::new()),
             brushes: Arc::new(concat_host::Brushes::new(&dirs.data)),
             enhancers: Arc::new(concat_host::Enhancers::new(&dirs.data)),
+            tweeners: Arc::new(concat_host::Tweeners::new(&dirs.data)),
             reversers: Arc::new(concat_host::Reversers::new()),
             dirs,
             playback: Playback::start(Arc::new(Events))?,

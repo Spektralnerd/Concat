@@ -21,6 +21,7 @@ import {
 import { TextPanel } from "../inspector/text-panel.slint";
 import { ShapePanel } from "../inspector/shape-panel.slint";
 import { BeatPanel } from "../inspector/beat-panel.slint";
+import { SmoothPanel } from "../inspector/smooth-panel.slint";
 import { RoundButton, ToolItem, ToolStrip } from "controls.slint";
 import { PhoneSheet } from "sheet.slint";
 import { PhoneCanvas } from "canvas.slint";
@@ -1589,10 +1590,15 @@ export component PhoneEditor inherits Rectangle {
             commit => { Editor.clip-commit(); }
         }
 
-        if root.sheet == "clip-speed": SpeedPanel {
-            selected: Editor.selected-clip;
-            set(field, value) => { Editor.clip-set(field, value); }
-            commit => { Editor.clip-commit(); }
+        if root.sheet == "clip-speed": VerticalLayout {
+            SpeedPanel {
+                selected: Editor.selected-clip;
+                set(field, value) => { Editor.clip-set(field, value); }
+                commit => { Editor.clip-commit(); }
+            }
+            if Editor.selected-clip.smooth-footage: SmoothPanel {
+                selected: Editor.selected-clip;
+            }
         }
 
         if root.sheet == "clip-beats": BeatPanel {
