@@ -485,34 +485,7 @@ pub(super) fn apply(
             }
             // The copy's bin entry, or the one already there for its path:
             // two clips of one file enhanced in turn share one copy.
-            let media_id = match project.media.iter().find(|media| media.path == item.path) {
-                Some(existing) => existing.id.clone(),
-                None => {
-                    let id = mint.next("m");
-                    project.media.push(MediaItem {
-                        id: id.clone(),
-                        path: item.path,
-                        name: item.name,
-                        duration: item.duration,
-                        kind: item.kind,
-                        width: item.width,
-                        height: item.height,
-                        frame_rate: item.frame_rate,
-                        frame_rate_fraction: item.frame_rate_fraction,
-                        video_codec: item.video_codec,
-                        audio_codec: item.audio_codec,
-                        has_audio: item.has_audio,
-                        audio_tracks: item.audio_tracks,
-                        origin: item.origin,
-                        placeholder: false,
-                        color_range: None,
-                        color_space: item.color_space,
-                        beats: None,
-                        extra: Default::default(),
-                    });
-                    id
-                }
-            };
+            let media_id = bin_entry(project, mint, item);
             let timeline = project.active_mut();
             let Some(index) = timeline.clips.iter().position(|clip| clip.id == clip_id) else {
                 return Ok(Outcome::default());
@@ -535,10 +508,13 @@ pub(super) fn apply(
             } else {
                 None
             };
-            // Bitwise so no assignment is short-circuited away.
+            // Bitwise so no assignment is short-circuited away. Any copy
+            // ends the clip's smooth slow motion, which was of the media
+            // now gone.
             let applied = assign(&mut clip.media_id, media_id.clone())
                 | source_start.is_some_and(|start| assign(&mut clip.source_start, start.max(0.0)))
-                | assign(&mut clip.enhanced, link);
+                | assign(&mut clip.enhanced, link)
+                | assign(&mut clip.smooth, None);
             if !applied {
                 return Ok(Outcome::default());
             }
@@ -557,6 +533,10 @@ pub(super) fn apply(
                 return Ok(Outcome::default());
             };
             let clip = timeline.clip_at_mut(index);
+            // A smooth copy is of whichever of the two the clip showed: back
+            // to that first, and the smooth slow motion ends, since the
+            // media it was made from is going.
+            let unsmoothed = unsmooth(clip);
             let media = if on {
                 link.copy.clone()
             } else {
@@ -571,7 +551,82 @@ pub(super) fn apply(
             };
             let applied = assign(&mut clip.media_id, media)
                 | assign(&mut clip.source_start, start)
-                | assign(&mut clip.enhanced, Some(Enhanced { on, ..link }));
+                | assign(&mut clip.enhanced, Some(Enhanced { on, ..link }))
+                | unsmoothed;
+            Ok(Outcome {
+                created_id: None,
+                applied,
+            })
+        }
+
+        Command::SmoothClip {
+            clip_id,
+            item,
+            source_start,
+            offset,
+            factor,
+            method,
+        } => {
+            if project.active().clip(&clip_id).is_none() {
+                return Ok(Outcome::default());
+            }
+            let media_id = bin_entry(project, mint, item);
+            let timeline = project.active_mut();
+            let Some(index) = timeline.clips.iter().position(|clip| clip.id == clip_id) else {
+                return Ok(Outcome::default());
+            };
+            let clip = timeline.clip_at_mut(index);
+            // The original is the one the first copy was made from, kept
+            // through a second run on a clip already showing a copy.
+            let original = clip
+                .smooth
+                .as_ref()
+                .map(|link| link.original.clone())
+                .unwrap_or_else(|| clip.media_id.clone());
+            let link = Some(Smooth {
+                original,
+                copy: media_id.clone(),
+                on: true,
+                offset,
+                factor,
+                method,
+            });
+            let applied = assign(&mut clip.media_id, media_id.clone())
+                | source_start.is_some_and(|start| assign(&mut clip.source_start, start.max(0.0)))
+                | assign(&mut clip.smooth, link);
+            if !applied {
+                return Ok(Outcome::default());
+            }
+            Ok(Outcome {
+                created_id: Some(media_id),
+                applied: true,
+            })
+        }
+
+        Command::SetClipSmooth { clip_id, on } => {
+            let timeline = project.active_mut();
+            let Some(index) = timeline.clips.iter().position(|clip| clip.id == clip_id) else {
+                return Ok(Outcome::default());
+            };
+            let Some(link) = timeline.clips[index].smooth.clone() else {
+                return Ok(Outcome::default());
+            };
+            let clip = timeline.clip_at_mut(index);
+            let media = if on {
+                link.copy.clone()
+            } else {
+                link.original.clone()
+            };
+            // The in-point moves with the media, from one's seconds to the
+            // other's, so the frame on screen is the same frame.
+            let start = match (link.on, on) {
+                (false, true) => (clip.source_start - link.offset).max(0.0),
+                (true, false) => clip.source_start + link.offset,
+                _ => clip.source_start,
+            };
+            let applied = assign(&mut clip.media_id, media)
+                | assign(&mut clip.source_start, start)
+                | assign(&mut clip.smooth, Some(Smooth { on, ..link }));
             Ok(Outcome {
                 created_id: None,
                 applied,
@@ -1283,4 +1338,49 @@ pub fn consolidation_clips(
         return Err(refuse("Include both sides of a transition in the merge."));
     }
     Ok(clips)
+}
+
+/// The bin entry for `item`: the one already there for its path - two
+/// clips of one file given a copy in turn share it - or a new one.
+fn bin_entry(project: &mut Project, mint: &mut IdMint, item: NewMedia) -> String {
+    if let Some(existing) = project.media.iter().find(|media| media.path == item.path) {
+        return existing.id.clone();
+    }
+    let id = mint.next("m");
+    project.media.push(MediaItem {
+        id: id.clone(),
+        path: item.path,
+        name: item.name,
+        duration: item.duration,
+        kind: item.kind,
+        width: item.width,
+        height: item.height,
+        frame_rate: item.frame_rate,
+        frame_rate_fraction: item.frame_rate_fraction,
+        video_codec: item.video_codec,
+        audio_codec: item.audio_codec,
+        has_audio: item.has_audio,
+        audio_tracks: item.audio_tracks,
+        origin: item.origin,
+        placeholder: false,
+        color_range: None,
+        color_space: item.color_space,
+        beats: None,
+        extra: Default::default(),
+    });
+    id
+}
+
+/// Ends a clip's smooth slow motion: the clip back on the media the copy
+/// was made from, its in-point moved back to that media's seconds, and the
+/// link gone. Whether anything changed.
+fn unsmooth(clip: &mut Clip) -> bool {
+    let Some(link) = clip.smooth.take() else {
+        return false;
+    };
+    if link.on {
+        clip.media_id = link.original;
+        clip.source_start += link.offset;
+    }
+    true
 }

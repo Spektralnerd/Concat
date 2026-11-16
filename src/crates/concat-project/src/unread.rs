@@ -151,6 +151,7 @@ const STABILIZE: &[&str] = &["stabilize"];
 const VOICE: &[&str] = &["voice"];
 const TRANSITION_IN: &[&str] = &["transitionIn"];
 const ENHANCED: &[&str] = &["enhanced"];
+const SMOOTH: &[&str] = &["smooth"];
 const BACKGROUND: &[&str] = &["background"];
 const COLOR_RANGE: &[&str] = &["colorRange"];
 const ORIGIN: &[&str] = &["origin"];
@@ -719,6 +720,7 @@ fn read_clip(
         (VOICE, clip.voice.is_none()),
         (TRANSITION_IN, clip.transition_in.is_none()),
         (ENHANCED, clip.enhanced.is_none()),
+        (SMOOTH, clip.smooth.is_none()),
         (BACKGROUND, clip.background.is_none()),
     ];
     for (field, value) in unread_blocks(raw, &blocks) {

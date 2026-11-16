@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{
     AppliedFilter, AudioTrack, Background, Clip, ClipKind, ClipMotion, ColorRange, ColorSpace,
     Crop, CustomFont, Cutout, CutoutMode, Enhanced, Framing, KeyEase, KeyProperty, Mask, MediaItem,
-    MediaKind, MediaOrigin, Project, RunStyle, ShapeStyle, SpeedPoint, Stabilize, Stroke,
+    MediaKind, MediaOrigin, Project, RunStyle, ShapeStyle, Smooth, SpeedPoint, Stabilize, Stroke,
     TextStyle, Timeline, Track, Transition, VideoSettings, VoiceMix,
 };
 
@@ -722,6 +722,41 @@ pub enum Command {
         /// The copy when true, the original when false.
         on: bool,
     },
+    /// Points a clip at the smooth copy of its span: `item`, the probed copy
+    /// the host wrote with frames made in between the original's, which
+    /// starts `offset` seconds into the media the clip showed. The clip
+    /// keeps that media as its original, so smooth slow motion can be
+    /// switched off (see [`Command::SetClipSmooth`]), and `source_start` is
+    /// its in-point in the copy. Its length, speed and curve are kept: the
+    /// copy covers the same seconds, only more densely. An unknown clip is
+    /// a no-op.
+    SmoothClip {
+        /// The clip to re-point.
+        clip_id: String,
+        /// The probed copy, as described by the host.
+        item: NewMedia,
+        /// The clip's in-point in the copy, in seconds, floored at 0.
+        /// Absent keeps the clip's.
+        #[serde(default)]
+        source_start: Option<f64>,
+        /// Seconds into the original the copy starts at (see
+        /// [`crate::model::Smooth::offset`]).
+        #[serde(default)]
+        offset: f64,
+        /// How many frames the copy has for each of the original's.
+        factor: u32,
+        /// How the frames in between were made: "ai", "blend" or
+        /// "ffmpeg".
+        method: String,
+    },
+    /// Shows a clip's smooth copy, or its original again. A no-op for a
+    /// clip smooth slow motion has not made a copy for.
+    SetClipSmooth {
+        /// The clip.
+        clip_id: String,
+        /// The copy when true, the original when false.
+        on: bool,
+    },
     /// A freeze frame at `time`: splits `clip_id`, inserts a still of
     /// `duration` on the same track, and ripples later clips on that track
     /// by `duration`. Video needs a probed `still` (host-extracted jpg);
@@ -1269,6 +1304,20 @@ impl Command {
                     || bad([*offset])
                     || *offset < 0.0
             }
+            Command::SmoothClip {
+                item,
+                source_start,
+                offset,
+                factor,
+                ..
+            } => {
+                bad(item.duration)
+                    || bad(item.frame_rate)
+                    || bad(*source_start)
+                    || bad([*offset])
+                    || *offset < 0.0
+                    || *factor < 2
+            }
             Command::UpdateClip { patch, .. } => {
                 bad(patch.volume)
                     || bad(patch.fade_in)
@@ -1403,6 +1452,8 @@ pub fn apply(
         | Command::FreezeFrame { .. }
         | Command::ReplaceClipMedia { .. }
         | Command::SetClipEnhanced { .. }
+        | Command::SmoothClip { .. }
+        | Command::SetClipSmooth { .. }
         | Command::MergeClips { .. }
         | Command::ConsolidateClips { .. }
         | Command::RemoveClips { .. }) => clips::apply(project, mint, command),

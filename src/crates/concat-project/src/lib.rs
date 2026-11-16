@@ -6012,6 +6012,194 @@ mod tests {
         assert!(!off.applied);
     }
 
+    /// Smooth slow motion's copy keeps the clip's original beside it, as
+    /// Enhance's does: off shows the original at the same moment, on the
+    /// copy, and the clip's length, speed and curve are not touched. Any
+    /// other replacement ends it, and switching Enhance first goes back to
+    /// the media the copy was made from.
+    #[test]
+    fn a_smooth_clip_switches_between_copy_and_original() {
+        use crate::commands::NewMedia;
+        use crate::model::MediaKind;
+        let item = |path: &str| NewMedia {
+            path: path.into(),
+            name: path.into(),
+            duration: Some(10.0),
+            kind: MediaKind::Video,
+            width: Some(64),
+            height: Some(64),
+            frame_rate: Some(24.0),
+            frame_rate_fraction: Some("24/1".into()),
+            video_codec: None,
+            audio_codec: None,
+            has_audio: false,
+            audio_tracks: Vec::new(),
+            origin: None,
+            color_space: Default::default(),
+        };
+        let mut editor = Editor::new();
+        editor
+            .apply(Command::AddMedia {
+                item: item("/b.mp4"),
+            })
+            .expect("imports");
+        let original = editor.project().media[0].id.clone();
+        let track = editor.project().active().tracks[0].id.clone();
+        let clip = editor
+            .apply(Command::AddClip {
+                media_id: original.clone(),
+                track_id: track,
+                start: 0.0,
+                ripple: false,
+            })
+            .expect("places")
+            .created_id
+            .expect("a clip");
+        editor
+            .apply(Command::TrimClip {
+                clip_id: clip.clone(),
+                edge: crate::commands::TrimEdge::Start,
+                delta: 5.0,
+                ripple: false,
+            })
+            .expect("trims");
+        editor
+            .apply(Command::SetClipSpeed {
+                clip_id: clip.clone(),
+                speed: 0.25,
+                ripple: false,
+            })
+            .expect("slows");
+        let shown = |editor: &Editor| {
+            editor
+                .project()
+                .active()
+                .clip(&clip)
+                .cloned()
+                .expect("there")
+        };
+        let before = shown(&editor);
+        assert_eq!(before.source_start, 5.0);
+
+        // A copy of the span from 4 s, four frames to one by RIFE.
+        let copy = editor
+            .apply(Command::SmoothClip {
+                clip_id: clip.clone(),
+                item: item("/b-smooth.mp4"),
+                source_start: Some(1.0),
+                offset: 4.0,
+                factor: 4,
+                method: "ai".into(),
+            })
+            .expect("smooths")
+            .created_id
+            .expect("the copy");
+        let now = shown(&editor);
+        assert_eq!(now.media_id, copy);
+        assert_eq!(now.source_start, 1.0);
+        assert_eq!((now.duration, now.speed), (before.duration, before.speed));
+        let link = now.smooth.clone().expect("linked");
+        assert_eq!(
+            (
+                link.original.as_str(),
+                link.copy.as_str(),
+                link.on,
+                link.offset,
+                link.factor
+            ),
+            (original.as_str(), copy.as_str(), true, 4.0, 4)
+        );
+        assert_eq!(link.method, "ai");
+
+        editor
+            .apply(Command::SetClipSmooth {
+                clip_id: clip.clone(),
+                on: false,
+            })
+            .expect("off");
+        assert_eq!(shown(&editor).media_id, original);
+        assert_eq!(shown(&editor).source_start, 5.0);
+        assert!(!shown(&editor).smooth.expect("kept").on);
+        editor
+            .apply(Command::SetClipSmooth {
+                clip_id: clip.clone(),
+                on: true,
+            })
+            .expect("on");
+        assert_eq!(shown(&editor).media_id, copy);
+        assert_eq!(shown(&editor).source_start, 1.0);
+        editor.undo();
+        assert_eq!(shown(&editor).media_id, original, "one undo step");
+        editor.redo();
+
+        // Made again with other settings: the original stays the first one.
+        let again = editor
+            .apply(Command::SmoothClip {
+                clip_id: clip.clone(),
+                item: item("/b-smooth-8.mp4"),
+                source_start: Some(1.0),
+                offset: 4.0,
+                factor: 8,
+                method: "blend".into(),
+            })
+            .expect("smooths")
+            .created_id
+            .expect("the copy");
+        let link = shown(&editor).smooth.expect("linked");
+        assert_eq!(
+            (link.original.as_str(), link.copy.as_str()),
+            (original.as_str(), again.as_str())
+        );
+
+        // Enhance on a smooth clip goes back to the original first.
+        editor
+            .apply(Command::ReplaceClipMedia {
+                clip_id: clip.clone(),
+                item: item("/b-enhanced.mp4"),
+                source_start: Some(5.0),
+                enhanced: true,
+                offset: 0.0,
+            })
+            .expect("enhances");
+        assert_eq!(shown(&editor).smooth, None, "a replacement ends it");
+        editor.undo();
+        assert!(shown(&editor).smooth.is_some());
+
+        // With an Enhance link from before the smooth copy, switching it
+        // ends the smooth slow motion on the media it was made from.
+        let mut linked = shown(&editor);
+        linked.enhanced = Some(crate::model::Enhanced {
+            original: original.clone(),
+            copy: original.clone(),
+            on: false,
+            offset: 0.0,
+        });
+        let timeline = editor.project_mut().active_mut();
+        let index = timeline
+            .clips
+            .iter()
+            .position(|c| c.id == clip)
+            .expect("there");
+        *timeline.clip_at_mut(index) = linked;
+        editor
+            .apply(Command::SetClipEnhanced {
+                clip_id: clip.clone(),
+                on: false,
+            })
+            .expect("switches");
+        assert_eq!(shown(&editor).smooth, None);
+        assert_eq!(shown(&editor).media_id, original);
+        assert_eq!(shown(&editor).source_start, 5.0);
+
+        let none = editor
+            .apply(Command::SetClipSmooth {
+                clip_id: clip.clone(),
+                on: true,
+            })
+            .expect("no-op");
+        assert!(!none.applied);
+    }
+
     // ── Delete Left / Delete Right (Q / W) ──
     // https://github.com/jub0t/Concat/issues/400
 

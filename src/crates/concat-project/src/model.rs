@@ -1829,6 +1829,36 @@ fn is_zero_seconds(seconds: &f64) -> bool {
     *seconds == 0.0
 }
 
+/// A clip's smooth slow motion, once it has a copy: see [`Clip::smooth`].
+/// The copy is the span the clip shows of its original with frames made
+/// in between the original's own - two, four or eight for each - so a clip
+/// slowed down plays a fresh picture every frame instead of holding each
+/// one. It lasts as long as the span and starts `offset` into the original,
+/// so the clip's speed and curve mean what they meant.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Smooth {
+    /// The bin item the clip was cut from: what it shows with smooth slow
+    /// motion off.
+    pub original: String,
+    /// The bin item holding the smooth copy.
+    pub copy: String,
+    /// Whether the clip shows the copy.
+    pub on: bool,
+    /// Seconds into the original the copy starts at. The clip's in-point
+    /// is in the copy's seconds while it shows the copy, so switching
+    /// between the two moves it by this much and the same moment stays on
+    /// screen.
+    #[serde(default, skip_serializing_if = "is_zero_seconds")]
+    pub offset: f64,
+    /// How many frames the copy has for each of the original's.
+    pub factor: u32,
+    /// How the frames in between were made: "ai" (RIFE), "blend" or
+    /// "ffmpeg".
+    pub method: String,
+}
+
 /// A transition on the cut into a clip.
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -2840,6 +2870,13 @@ pub struct Clip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
     pub enhanced: Option<Enhanced>,
+    /// The clip's smooth slow motion: the media it was cut from and the
+    /// copy with frames made in between, and which of the two it shows.
+    /// Absent until a copy is made; switching it off shows the original
+    /// again without making the frames a second time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "wire::maybe")]
+    pub smooth: Option<Smooth>,
     /// The overlay, when this is a text clip.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
@@ -2954,6 +2991,7 @@ impl Clip {
             detached_from: None,
             transition_in: None,
             enhanced: None,
+            smooth: None,
             text: None,
             shape: None,
             background: None,
