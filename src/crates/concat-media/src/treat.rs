@@ -165,6 +165,132 @@ fn build(spec: &str, width: u32, height: u32) -> Result<filter::Graph> {
     Ok(graph)
 }
 
+/// Pictures through a chain that holds some back and gives more or fewer
+/// out than go in - a rate change, `minterpolate` - in order: the decoder's
+/// graph and [`treat`] are one picture in, one out, and these are not.
+/// Each picture goes in with its index at `rate`; whatever the chain has
+/// ready comes back, and [`Stream::finish`] gives what it still holds.
+pub struct Stream {
+    graph: filter::Graph,
+}
+
+impl Stream {
+    /// `spec` over RGBA pictures `width` by `height` arriving at `rate`
+    /// frames a second (`num/den`), ending in RGBA at whatever size and
+    /// rate the chain makes.
+    pub fn new(spec: &str, width: u32, height: u32, rate: (i64, i64)) -> Result<Stream> {
+        let path = Path::new("stream");
+        ffi::init();
+        ffi::begin();
+        let mut graph = filter::Graph::new();
+        // SAFETY: as in `build`: a fresh graph with no filters yet.
+        unsafe {
+            (*graph.as_mut_ptr()).nb_threads = 1;
+        }
+        let (num, den) = (rate.0.max(1), rate.1.max(1));
+        let args = format!(
+            "video_size={width}x{height}:pix_fmt={}:time_base={den}/{num}:frame_rate={num}/{den}:pixel_aspect=1/1",
+            Into::<ffmpeg::sys::AVPixelFormat>::into(Pixel::RGBA).0
+        );
+        let missing = |name: &str| Error::Missing {
+            what: "filter",
+            name: name.to_owned(),
+        };
+        graph
+            .add(
+                &filter::find("buffer").ok_or_else(|| missing("buffer"))?,
+                "in",
+                &args,
+            )
+            .map_err(|error| ffi::fail_said("buffer source", path, error))?;
+        graph
+            .add(
+                &filter::find("buffersink").ok_or_else(|| missing("buffersink"))?,
+                "out",
+                "",
+            )
+            .map_err(|error| ffi::fail_said("buffer sink", path, error))?;
+        graph
+            .output("in", 0)
+            .and_then(|parser| parser.input("out", 0))
+            .and_then(|parser| parser.parse(&format!("{spec},format=rgba")))
+            .map_err(|error| ffi::fail_said("filter graph", path, error))?;
+        graph
+            .validate()
+            .map_err(|error| ffi::fail_said("filter graph", path, error))?;
+        Ok(Stream { graph })
+    }
+
+    /// Feeds `frame`, the `index`th picture, and returns every picture the
+    /// chain has ready.
+    pub fn push(&mut self, frame: &Frame, index: i64) -> Result<Vec<Frame>> {
+        let path = Path::new("stream");
+        let (width, height) = (frame.width(), frame.height());
+        let mut source = Video::new(Pixel::RGBA, width, height);
+        {
+            let row = width as usize * 4;
+            let stride = source.stride(0);
+            let data = source.data_mut(0);
+            for (y, line) in frame.pixels().chunks_exact(row).enumerate() {
+                data[y * stride..y * stride + row].copy_from_slice(line);
+            }
+        }
+        source.set_pts(Some(index));
+        {
+            let mut context = self.graph.get("in").expect("the graph has an input");
+            context
+                .source()
+                .add(&source)
+                .map_err(|error| ffi::fail("filter", path, error))?;
+        }
+        self.ready()
+    }
+
+    /// Ends the input and returns what the chain still held.
+    pub fn finish(&mut self) -> Result<Vec<Frame>> {
+        {
+            let mut context = self.graph.get("in").expect("the graph has an input");
+            let _ = context.source().flush();
+        }
+        self.ready()
+    }
+
+    /// Every picture the sink has, until it wants more or is done.
+    fn ready(&mut self) -> Result<Vec<Frame>> {
+        let path = Path::new("stream");
+        let mut out = Vec::new();
+        loop {
+            let mut filtered = Video::empty();
+            let pulled = {
+                let mut context = self.graph.get("out").expect("the graph has an output");
+                context.sink().frame(&mut filtered)
+            };
+            match pulled {
+                Ok(()) => {
+                    let (width, height) = (filtered.width(), filtered.height());
+                    let row = width as usize * 4;
+                    let stride = filtered.stride(0);
+                    let data = filtered.data(0);
+                    let mut pixels = Vec::with_capacity(row * height as usize);
+                    for y in 0..height as usize {
+                        pixels.extend_from_slice(&data[y * stride..y * stride + row]);
+                    }
+                    out.push(Frame::from_rgba(width, height, pixels).ok_or_else(|| {
+                        Error::Probe {
+                            path: path.to_path_buf(),
+                            detail: "the filtergraph produced a frame of the wrong size".to_owned(),
+                        }
+                    })?);
+                }
+                Err(ffmpeg::Error::Eof) => break,
+                Err(error) if ffi::is_again(&error) => break,
+                Err(error) => return Err(ffi::fail("filter output", path, error)),
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// One picture through `graph`: in at `in`, out at `out`.
 fn pass(graph: &mut filter::Graph, frame: &Frame) -> Result<Frame> {
     let path = Path::new("layer");
@@ -216,6 +342,23 @@ fn pass(graph: &mut filter::Graph, frame: &Frame) -> Result<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chain that doubles the rate gives about twice the pictures out,
+    /// some held back until the input ends.
+    #[test]
+    fn a_stream_gives_more_pictures_than_it_takes() {
+        let mut stream = Stream::new("framerate=fps=48", 8, 4, (24, 1)).expect("builds");
+        let mut out = 0;
+        for index in 0..12 {
+            let mut frame = Frame::black(8, 4);
+            for pixel in frame.pixels_mut().chunks_exact_mut(4) {
+                pixel.copy_from_slice(&[(index * 20) as u8, 0, 0, 255]);
+            }
+            out += stream.push(&frame, index).expect("pushes").len();
+        }
+        out += stream.finish().expect("finishes").len();
+        assert!((22..=25).contains(&out), "{out} pictures out of 12");
+    }
 
     /// A solid red picture through `negate` comes back cyan, the same size.
     #[test]
