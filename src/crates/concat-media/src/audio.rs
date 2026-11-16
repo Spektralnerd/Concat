@@ -2373,8 +2373,15 @@ mod tests {
                 };
                 let sound = dir.join(format!("sound-{}.{own}", codec.name()));
                 let format = AudioFormat { codec, kbps: 128 };
-                mix_to_file_as(&[piece.clone()], &[], 1.0, &sound, format, &mut |_| true)
-                    .unwrap_or_else(|error| panic!("{} mixes: {error}", codec.label()));
+                mix_to_file_as(
+                    std::slice::from_ref(&piece),
+                    &[],
+                    1.0,
+                    &sound,
+                    format,
+                    &mut |_| true,
+                )
+                .unwrap_or_else(|error| panic!("{} mixes: {error}", codec.label()));
                 let output = dir.join(format!("out-{}.{container}", codec.name()));
                 mux(&video, &sound, &output)
                     .unwrap_or_else(|error| panic!("{} in a .{container}: {error}", codec.label()));
@@ -2447,8 +2454,15 @@ mod tests {
                 codec: AudioCodec::Aac,
                 kbps,
             };
-            mix_to_file_as(&[piece.clone()], &[], 2.0, &sound, format, &mut |_| true)
-                .expect("mixes");
+            mix_to_file_as(
+                std::slice::from_ref(&piece),
+                &[],
+                2.0,
+                &sound,
+                format,
+                &mut |_| true,
+            )
+            .expect("mixes");
             std::fs::metadata(&sound).expect("written").len()
         };
         let (small, big) = (size(64), size(256));
@@ -2490,10 +2504,16 @@ mod tests {
         };
         let output = dir.join("mixed.m4a");
         let mut heard = Vec::new();
-        mix_to_file_reporting(&[piece.clone()], &[], 2.0, &output, &mut |fraction| {
-            heard.push(fraction);
-            true
-        })
+        mix_to_file_reporting(
+            std::slice::from_ref(&piece),
+            &[],
+            2.0,
+            &output,
+            &mut |fraction| {
+                heard.push(fraction);
+                true
+            },
+        )
         .expect("mixes");
         assert!(heard.len() > 10, "{} reports", heard.len());
         assert!(
