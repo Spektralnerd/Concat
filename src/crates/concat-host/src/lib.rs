@@ -43,6 +43,7 @@ pub mod playback;
 pub mod preview;
 #[cfg(test)]
 mod project_save_tests;
+pub mod project_zip;
 pub mod projects;
 pub mod proxy;
 pub mod record;

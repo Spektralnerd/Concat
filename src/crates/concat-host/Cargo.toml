@@ -60,6 +60,11 @@ serde_json.workspace = true
 cpal = "0.16"
 memmap2 = "0.9"
 
+# Fork: a project as one ZIP file, to keep or to carry to another phone;
+# see project_zip.rs. Deflate through flate2's pure-Rust backend only, for
+# the document; the media go in stored, as they are.
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+
 # The machine's memory, for sizing the caches to it; see memory.rs.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
