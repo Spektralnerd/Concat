@@ -360,6 +360,14 @@ pub(crate) fn origin(input: &ffmpeg::format::context::Input) -> Rational {
         .unwrap_or(Rational::ZERO)
 }
 
+/// Fork: whether `stream` is a cover - the one picture an MP3, an M4A or
+/// a FLAC carries as its album art, which labels the file and never plays.
+pub(crate) fn is_cover(stream: &ffmpeg::format::stream::Stream<'_>) -> bool {
+    stream
+        .disposition()
+        .contains(ffmpeg::format::stream::Disposition::ATTACHED_PIC)
+}
+
 /// Seconds in `AV_TIME_BASE` units, which is what container-level seeks take.
 pub(crate) fn av_ticks(seconds: Rational) -> i64 {
     let scaled = seconds * Rational::from_int(i64::from(ffmpeg::sys::AV_TIME_BASE));

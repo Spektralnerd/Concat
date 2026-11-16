@@ -118,7 +118,20 @@ pub fn probe(path: impl AsRef<Path>) -> Result<MediaInfo> {
         (duration > 0).then(|| Rational::new(duration, i64::from(ffmpeg::sys::AV_TIME_BASE)));
 
     let origin = ffi::origin(&input);
-    let video = match input.streams().best(ffmpeg::media::Type::Video) {
+    // Fork: a cover - the album art of an MP3, an M4A or a FLAC - is the
+    // file's label, not a picture of its own: the file is sound, and goes
+    // in as sound. Taken for the picture, a song came onto the timeline as
+    // a still of its sleeve over a lane of its own, with the sound under it.
+    let video = input
+        .streams()
+        .best(ffmpeg::media::Type::Video)
+        .filter(|stream| !ffi::is_cover(stream))
+        .or_else(|| {
+            input.streams().find(|stream| {
+                stream.parameters().medium() == ffmpeg::media::Type::Video && !ffi::is_cover(stream)
+            })
+        });
+    let video = match video {
         Some(stream) => Some(video_stream(&stream, path, origin)?),
         None => None,
     };
@@ -424,6 +437,22 @@ mod tests {
             "{picked:?} is not the pace the recording was made at"
         );
         assert_ne!(picked, Rational::from_int(90_000));
+    }
+
+    /// Fork: a song's cover is its label, not a picture. An MP3 with album
+    /// art probes as sound alone, so it goes onto the timeline as sound.
+    #[test]
+    fn a_songs_cover_is_not_a_picture() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/song-with-cover.mp3");
+        let info = probe(path).expect("probes");
+        assert!(
+            info.video.is_none(),
+            "the cover is no picture: {:?}",
+            info.video
+        );
+        let sound = info.audio.expect("the song is sound");
+        assert_eq!(sound.codec, "mp3");
+        assert_eq!(info.audio_streams.len(), 1);
     }
 
     #[test]
