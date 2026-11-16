@@ -6,7 +6,7 @@ name = "Whip Pan"
 kind = "transition"
 category = "Wipe"
 order = 14
-description = "The camera whips sideways so fast the frame smears, and lands on the next shot."
+description = "The camera whips off in any direction so fast the frame smears, and lands on the next shot."
 
 [[param]]
 key = "speed"
@@ -16,6 +16,42 @@ min = 20
 max = 100
 step = 1
 default = 80
+
+# Which way the camera flicks, as a compass would read it on the screen:
+# 0 to the right, 90 up, 180 to the left, -90 down. The picture runs the
+# other way.
+[[param]]
+key = "angle"
+label = "Angle"
+unit = "°"
+min = -180
+max = 180
+step = 1
+default = 0
+
+# Side by side: the next shot sits beside this one and slides in with the
+# seam between them. Mirrored: each shot runs on in mirror images of
+# itself, the camera races through this one and lands in the next, and the
+# swap hides in the thick of the streak.
+[[param]]
+key = "style"
+label = "Style"
+type = "enum"
+values = [0, 1]
+labels = ["Side by side", "Mirrored"]
+default = 0
+min = 0
+max = 1
+
+# How long the streak is, against the speed's own.
+[[param]]
+key = "blur"
+label = "Blur"
+unit = "%"
+min = 0
+max = 300
+step = 1
+default = 100
 
 [transition]
 fallback = "slideleft"

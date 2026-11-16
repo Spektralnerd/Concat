@@ -23,3 +23,31 @@ input = [0.8, 0.5, 0.3, 1]
 to = [0.05, 0.15, 0.4, 1]
 progress = 0.37
 expect = [0.7998, 0.5, 0.30005, 1]
+
+# On a slant and mirrored, the cut ends on the incoming picture as it is.
+[[probe]]
+name = "diagonal mirrored lands"
+params = { angle = 30, style = 1 }
+input = [0.8, 0.5, 0.3, 1]
+to = [0.05, 0.15, 0.4, 1]
+progress = 0.95
+expect = [0.05, 0.15, 0.4, 1]
+
+# Mirrored, the swap falls in the middle of the streak: half of it is the
+# outgoing picture and half the incoming one.
+[[probe]]
+name = "mirrored swap blends"
+params = { style = 1 }
+input = [0.8, 0.5, 0.3, 1]
+to = [0.05, 0.15, 0.4, 1]
+progress = 0.5
+expect = [0.425, 0.325, 0.35, 1]
+
+# Straight down, side by side, the frame starts on the outgoing picture.
+[[probe]]
+name = "downward starts on the outgoing"
+params = { angle = -90 }
+input = [0.8, 0.5, 0.3, 1]
+to = [0.05, 0.15, 0.4, 1]
+progress = 0.2
+expect = [0.8, 0.5, 0.3, 1]
