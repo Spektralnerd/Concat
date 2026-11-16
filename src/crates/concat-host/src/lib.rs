@@ -55,6 +55,7 @@ pub mod sounds;
 pub mod stabilize;
 pub mod templates;
 pub mod titles;
+pub mod tween;
 pub mod updates;
 pub mod voices;
 
@@ -68,6 +69,7 @@ pub use reverse::{ReverseRequest, Reversers};
 pub use session::{EditorView, Session, SettingsView};
 pub use stabilize::{StabilizeRequest, Stabilizers};
 pub use titles::{TitleClip, Titles};
+pub use tween::{TweenRequest, Tweeners};
 
 /// The one scheduler every decode for the screen goes through: the
 /// monitor's frames and the frames ahead of the playhead first, then
