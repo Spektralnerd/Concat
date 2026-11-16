@@ -456,7 +456,33 @@ component Clip inherits Rectangle {
             ramp-h: root.fade-h;
         }
 
-
+        // The song's beat grid, over the sound and the frames alike: the
+        // beats as short marks at the foot, a bar's first taller, and the
+        // lines cuts snap to across the whole body. Rust builds both in a
+        // 1x1 box over the clip, each mark a pixel wide at the zoom it was
+        // built for, the way it builds the waveform.
+        if root.item.beat-ticks != "": Path {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            commands: root.item.beat-ticks;
+            viewbox-width: 1;
+            viewbox-height: 1;
+            fit: fill;
+            fill: Theme.fg.with-alpha(0.45);
+        }
+        if root.item.beat-lines != "": Path {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            commands: root.item.beat-lines;
+            viewbox-width: 1;
+            viewbox-height: 1;
+            fit: fill;
+            fill: Theme.accent.with-alpha(0.9);
+        }
     }
 
     // ── header ───────────────────────────────────────────────────────────

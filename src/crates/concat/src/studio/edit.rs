@@ -274,7 +274,8 @@ impl Studio {
     /// the threshold wins.
     /// How far a moving set of clips should shift so the nearest of its
     /// edges - any clip's start or end - lands on a snap target: the
-    /// origin, the playhead, or an edge of a clip that is not moving. Zero
+    /// origin, the playhead, an edge of a clip that is not moving, or a
+    /// line of a song's beat grid (see `beats`). Zero
     /// when nothing is in reach. A drag used to snap only the dragged
     /// clip's start, so an end never met the next clip (reported on
     /// Reddit), and a group could snap to where its own clips had been.
@@ -290,6 +291,9 @@ impl Studio {
             targets.push(clip.start as f32);
             targets.push((clip.start + clip.duration) as f32);
         }
+        // The lines of the songs' beat grids, but those of a song being
+        // moved itself, whose lines move with it.
+        targets.extend(self.beat_targets(|id| moving.contains(&id)));
         let mut best = 0.0;
         let mut best_distance = threshold;
         for &edge in edges {
@@ -325,6 +329,9 @@ impl Studio {
             }
             consider(clip.start as f32);
             consider((clip.start + clip.duration) as f32);
+        }
+        for line in self.beat_targets(|id| id == exclude) {
+            consider(line);
         }
         best
     }

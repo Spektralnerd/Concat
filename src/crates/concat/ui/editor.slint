@@ -320,6 +320,17 @@ export global Editor {
     callback cutout-painting(on: bool);
     callback cutout-subject(index: int);
     callback cutout-clear();
+    /// The beat grid of the selected clip's sound; see BeatPanel. Find the
+    /// beats (again, keeping how the grid is counted), stop finding them;
+    /// count the grid - beats in a bar, a line every so many bars or
+    /// beats, moved by milliseconds, kept off the lanes; move the counting
+    /// on by so many beats; double (1) or halve (-1) the tempo; drop it.
+    callback beats-detect();
+    callback beats-cancel();
+    callback beats-set(per-bar: int, every: int, bars: bool, offset: float, hidden: bool);
+    callback beats-shift(beats: int);
+    callback beats-tempo(factor: int);
+    callback beats-clear();
     callback clip-enhance-set(on: bool);
     /// The Enhance section's settings and its preview; see EnhancePanel.
     /// `scale` is times larger, zero for Auto.

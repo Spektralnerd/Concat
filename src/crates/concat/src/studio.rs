@@ -45,6 +45,7 @@ use concat_project::model::{
 use concat_project::{Command, PlayheadSide};
 
 mod backdrop;
+mod beats;
 mod consolidate;
 use consolidate::MergeJob;
 mod masking;
@@ -1281,6 +1282,13 @@ pub struct Studio {
     /// The stabilization analyses running, by media id, and how far each
     /// has got. One at a time, like the masks.
     stabilize_jobs: HashMap<String, f32>,
+    /// The beat detections running, by media id, and how far each has
+    /// got; and each one's stop. See `beats`.
+    beat_jobs: HashMap<String, f32>,
+    beat_cancels: HashMap<String, Arc<std::sync::atomic::AtomicBool>>,
+    /// The beat grids drawn over the clips on the lanes, by what each was
+    /// drawn for; see `Studio::beat_paths`.
+    beat_marks: RefCell<HashMap<String, (SharedString, SharedString)>>,
     /// Media whose stabilization was turned on anew, so an analysis the
     /// app died in last time is tried again rather than skipped.
     stabilize_retry: HashSet<String>,
@@ -2019,6 +2027,7 @@ fn command_kind(command: &Command) -> &'static str {
         Command::RemoveFont { .. } => "Remove font",
         Command::UpdateMediaPath { .. } => "Relink media",
         Command::SetMediaColorRange { .. } => "Colour range",
+        Command::SetMediaBeats { .. } => "Beats",
     }
 }
 
@@ -3182,6 +3191,9 @@ impl Studio {
             picking: None,
             cutout_jobs: HashMap::new(),
             stabilize_jobs: HashMap::new(),
+            beat_jobs: HashMap::new(),
+            beat_cancels: HashMap::new(),
+            beat_marks: RefCell::new(HashMap::new()),
             voice_jobs: HashMap::new(),
             voice_cancel: None,
             voice_failed: HashSet::new(),

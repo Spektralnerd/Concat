@@ -1221,6 +1221,7 @@ impl Studio {
             }
         };
         let (mask_rows, mask_index) = self.mask_rows(clip);
+        let beats = self.beat_readout(clip);
         SelectedClipData {
             present: true,
             batch: targets.len() as i32,
@@ -1532,6 +1533,17 @@ impl Studio {
             enhance_estimate_total: estimate_total.into(),
             enhance_estimate_frames: estimate_frames.into(),
             enhance_estimate_per_frame: estimate_per_frame.into(),
+            beats_sound: beats.sound,
+            beats_progress: beats.progress,
+            beats_found: beats.found,
+            beats_tempo: beats.tempo,
+            beats_count: beats.count,
+            beats_confidence: beats.confidence,
+            beats_per_bar: beats.per_bar,
+            beats_every: beats.every,
+            beats_bars: beats.bars,
+            beats_offset: beats.offset,
+            beats_hidden: beats.hidden,
         }
     }
 

@@ -20,6 +20,7 @@ import {
 } from "../inspector/grading.slint";
 import { TextPanel } from "../inspector/text-panel.slint";
 import { ShapePanel } from "../inspector/shape-panel.slint";
+import { BeatPanel } from "../inspector/beat-panel.slint";
 import {
     ClipField, ClipKind, ClipTextField, SelectedClipData, SelectedTransitionData,
 } from "../timeline/model.slint";
@@ -857,6 +858,11 @@ export component ConfigPane inherits Rectangle {
                         with-speed: root.is-audio;
                         set(field, value) => { root.clip-set(field, value); }
                         commit => { root.clip-commit(); }
+                    }
+                    // The song's beats and the grid cuts snap to, under
+                    // the mix: a sound's, or a picture's own sound's.
+                    if !root.selected.batch-volume && root.selected.beats-sound: BeatPanel {
+                        selected: root.selected;
                     }
                     // The three treatments, between the mix and the library:
                     // they are chain links like any other, but they are the

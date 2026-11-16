@@ -1797,6 +1797,26 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_cutout_clear(on_window!(|state| {
         state.cutout_clear();
     }));
+    editor.on_beats_detect(on_window!(|state| {
+        state.beats_detect();
+    }));
+    editor.on_beats_cancel(on_window!(|state| {
+        state.beats_cancel();
+    }));
+    editor.on_beats_set(on_window!(
+        |state, per_bar: i32, every: i32, bars: bool, offset: f32, hidden: bool| {
+            state.beats_set(per_bar, every, bars, offset, hidden);
+        }
+    ));
+    editor.on_beats_shift(on_window!(|state, beats: i32| {
+        state.beats_shift(beats);
+    }));
+    editor.on_beats_tempo(on_window!(|state, factor: i32| {
+        state.beats_tempo(factor);
+    }));
+    editor.on_beats_clear(on_window!(|state| {
+        state.beats_clear();
+    }));
     editor.on_clip_enhance_set(on_window!(|state, on: bool| {
         state.clip_enhance_set(on);
     }));

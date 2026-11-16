@@ -265,6 +265,7 @@ impl Studio {
                         } else {
                             Default::default()
                         };
+                    let beats = self.beat_paths(clip);
                     ClipData {
                         id: clip.id.as_str().into(),
                         name: clip.name.as_str().into(),
@@ -296,6 +297,8 @@ impl Studio {
                         wave_span: wave.2,
                         has_audio: self.clip_has_sound(clip),
                         strip: self.strip_of(clip),
+                        beat_lines: beats.0,
+                        beat_ticks: beats.1,
                     }
                 })
                 .collect(),

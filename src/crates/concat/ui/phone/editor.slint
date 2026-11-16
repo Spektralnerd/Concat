@@ -20,6 +20,7 @@ import {
 } from "../inspector/clip-inspector.slint";
 import { TextPanel } from "../inspector/text-panel.slint";
 import { ShapePanel } from "../inspector/shape-panel.slint";
+import { BeatPanel } from "../inspector/beat-panel.slint";
 import { RoundButton, ToolItem, ToolStrip } from "controls.slint";
 import { PhoneSheet } from "sheet.slint";
 import { PhoneCanvas } from "canvas.slint";
@@ -448,6 +449,7 @@ export component PhoneEditor inherits Rectangle {
             : name == "clip-speed" ? I18n.t("common.speed")
             : name == "clip-audio" ? I18n.t("common.audio")
             : name == "clip-audio-effects" ? I18n.t("configPane.audioEffects")
+            : name == "clip-beats" ? I18n.t("beats.title")
             : name == "clip-adjust" ? I18n.t("common.adjust")
             : name == "clip-enhance" ? I18n.t("common.enhance")
             : name == "clip-layer" ? I18n.t("configPane.filter")
@@ -1120,6 +1122,15 @@ export component PhoneEditor inherits Rectangle {
                 current: root.sheet == "clip-audio-effects";
                 clicked => { root.show("clip-audio-effects", true); }
             }
+            // The song's beats and the grid cuts snap to: a sheet of
+            // their own, beside the sound's other sheets.
+            if (root.is-video || root.is-audio) && Editor.selected-clip.beats-sound
+                && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.music;
+                label: I18n.t("beats.title");
+                current: root.sheet == "clip-beats";
+                clicked => { root.show("clip-beats", true); }
+            }
             // In, Out and Loop: the moves a clip, a title or a shape makes.
             if root.is-picture || root.is-text || root.is-shape: ToolItem {
                 glyph: Glyph.circle-play;
@@ -1568,6 +1579,11 @@ export component PhoneEditor inherits Rectangle {
             selected: Editor.selected-clip;
             set(field, value) => { Editor.clip-set(field, value); }
             commit => { Editor.clip-commit(); }
+        }
+
+        if root.sheet == "clip-beats": BeatPanel {
+            selected: Editor.selected-clip;
+            first: true;
         }
 
         if root.sheet == "clip-audio": VerticalLayout {

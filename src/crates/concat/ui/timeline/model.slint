@@ -137,6 +137,12 @@ export struct ClipData {
     /// The frames a picture clip tiles along its body; `frames` is 0 when
     /// there are none yet.
     strip: StripData,
+    /// The beat grid of the clip's sound, drawn as `wave` is, in a 1x1 box
+    /// over the whole clip: `beat-lines` the lines cuts snap to, across
+    /// the clip; `beat-ticks` the other beats, short marks at its foot, a
+    /// bar's first beat taller. Both empty with no grid, or one hidden.
+    beat-lines: string,
+    beat-ticks: string,
 }
 
 
@@ -519,6 +525,24 @@ export struct SelectedClipData {
     voice-fetching: bool,
     // vocals apart from music (0), or speech apart from noise (1)
     voice-kind: int,
+
+    // The beat grid of the clip's sound (see BeatPanel): whether the clip
+    // plays sound at all; the detection, -1 when none is running, else how
+    // far along; whether beats were found, at what tempo, how many and how
+    // sure (0..1); and the grid - beats in a bar, a line every so many
+    // bars (`beats-bars`) or beats, moved by so many milliseconds, kept
+    // off the lanes
+    beats-sound: bool,
+    beats-progress: float,
+    beats-found: bool,
+    beats-tempo: float,
+    beats-count: int,
+    beats-confidence: float,
+    beats-per-bar: int,
+    beats-every: int,
+    beats-bars: bool,
+    beats-offset: float,
+    beats-hidden: bool,
 
     // Enhance writing this clip's enhanced copy: -1 when it is not, else
     // how far along, and whether that is the model downloading rather

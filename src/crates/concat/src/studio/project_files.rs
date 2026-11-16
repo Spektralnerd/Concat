@@ -387,6 +387,7 @@ impl Studio {
         self.cutout_jobs.clear();
         self.stabilize_jobs.clear();
         self.stabilize_retry.clear();
+        self.cancel_beats();
         self.cancel_voices();
         self.region_job = None;
         self.picking = None;

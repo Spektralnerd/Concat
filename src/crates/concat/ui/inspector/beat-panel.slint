@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jareer Abdullah and Concat contributors
+
+import { I18n } from "../i18n.slint";
+import { Theme } from "../theme/theme.slint";
+import { Glyph } from "../icons.slint";
+import { Editor } from "../editor.slint";
+import { SelectedClipData } from "../timeline/model.slint";
+import { Row, Section, SectionBody, SectionHeader } from "../primitives/panel.slint";
+import { Button, Progress } from "../primitives/modal.slint";
+import { SegmentedControl } from "../primitives/segmented-control.slint";
+import { HelpButton, Note, Param, ParamFormat, SwitchRow } from "controls.slint";
+
+/// Beats: the song's beats found in its sound, and the grid the lanes
+/// count on them - lines across the clip that cuts snap to, every so many
+/// beats or bars. Found once, in the background, for the file; the grid is
+/// counted at once as its knobs move. The same panel on the desk's Sound
+/// tab and on the phone's Beats sheet.
+export component BeatPanel inherits VerticalLayout {
+    in property <SelectedClipData> selected;
+    /// The first section of its page, for its top edge.
+    in property <bool> first;
+
+    property <bool> running: root.selected.beats-progress >= 0;
+    property <bool> found: root.selected.beats-found;
+
+    property <float> per-bar;
+    property <float> every;
+    property <float> offset;
+
+    function seed() {
+        root.per-bar = root.selected.beats-per-bar;
+        root.every = root.selected.beats-every;
+        root.offset = root.selected.beats-offset;
+    }
+
+    init => { root.seed(); }
+    changed selected => { root.seed(); }
+
+    /// Counts the grid as the knobs stand, with `bars` and `hidden` as
+    /// given.
+    function count(bars: bool, hidden: bool) {
+        Editor.beats-set(
+            Math.round(root.per-bar),
+            Math.round(root.every),
+            bars,
+            root.offset,
+            hidden);
+    }
+
+    Section {
+        first: root.first;
+
+        header := SectionHeader {
+            title: I18n.t("beats.title");
+            collapsible: true;
+            summary: root.running
+                ? I18n.t1("beats.detecting", "\{Math.round(root.selected.beats-progress * 100)}")
+                : root.found
+                    ? I18n.t2("beats.summary",
+                        "\{Math.round(root.selected.beats-tempo * 10) / 10}",
+                        "\{root.selected.beats-count}")
+                    : "";
+            HelpButton {
+                text: I18n.t("beats.help");
+            }
+        }
+
+        if header.open: SectionBody {
+            HorizontalLayout {
+                padding-left: Theme.pad;
+                padding-right: Theme.pad;
+                padding-top: 4px;
+                padding-bottom: 4px;
+                spacing: 8px;
+
+                if !root.running: Button {
+                    label: root.found ? I18n.t("beats.detectAgain") : I18n.t("beats.detect");
+                    glyph: Glyph.music;
+                    primary: !root.found;
+                    clicked => { Editor.beats-detect(); }
+                }
+                if root.running: Button {
+                    label: I18n.t("beats.stop");
+                    clicked => { Editor.beats-cancel(); }
+                }
+                if root.found && !root.running: Button {
+                    label: I18n.t("beats.remove");
+                    ghost: true;
+                    clicked => { Editor.beats-clear(); }
+                }
+            }
+
+            if root.running: HorizontalLayout {
+                padding-left: Theme.pad;
+                padding-right: Theme.pad;
+                Progress {
+                    value: root.selected.beats-progress;
+                    live: true;
+                }
+            }
+
+            if !root.found && !root.running: Note {
+                text: I18n.t("beats.notYet");
+            }
+
+            if root.found && root.selected.beats-confidence < 0.5: Note {
+                text: I18n.t("beats.unsure");
+            }
+
+            // The grid: a line every so many beats, or bars.
+            if root.found: Row {
+                label: I18n.t("beats.lineEvery");
+                SegmentedControl {
+                    horizontal-stretch: 1;
+                    options: [I18n.t("beats.unitBeats"), I18n.t("beats.unitBars")];
+                    current: root.selected.beats-bars ? 1 : 0;
+                    changed(index) => { root.count(index == 1, root.selected.beats-hidden); }
+                }
+            }
+
+            if root.found: Param {
+                label: root.selected.beats-bars ? I18n.t("beats.everyBars") : I18n.t("beats.everyBeats");
+                value <=> root.every;
+                minimum: 1;
+                maximum: 64;
+                step: 1;
+                default-value: 1;
+                fmt: ParamFormat.plain;
+                changed(v) => { root.count(root.selected.beats-bars, root.selected.beats-hidden); }
+            }
+
+            if root.found: Param {
+                label: I18n.t("beats.perBar");
+                value <=> root.per-bar;
+                minimum: 1;
+                maximum: 64;
+                step: 1;
+                default-value: 4;
+                fmt: ParamFormat.plain;
+                changed(v) => { root.count(root.selected.beats-bars, root.selected.beats-hidden); }
+            }
+
+            // Where the counting starts: the bar a beat early or late, or
+            // the other bar of each pair.
+            if root.found: Row {
+                label: I18n.t("beats.barStart");
+                Button {
+                    horizontal-stretch: 1;
+                    label: I18n.t("beats.earlier");
+                    glyph: Glyph.chevron-left;
+                    clicked => { Editor.beats-shift(-1); }
+                }
+                Button {
+                    horizontal-stretch: 1;
+                    label: I18n.t("beats.later");
+                    glyph: Glyph.chevron-right;
+                    clicked => { Editor.beats-shift(1); }
+                }
+            }
+
+            // The finder heard half the tempo, or twice it.
+            if root.found: Row {
+                label: I18n.t("beats.tempo");
+                Button {
+                    horizontal-stretch: 1;
+                    label: I18n.t("beats.halve");
+                    clicked => { Editor.beats-tempo(-1); }
+                }
+                Button {
+                    horizontal-stretch: 1;
+                    label: I18n.t("beats.double");
+                    clicked => { Editor.beats-tempo(1); }
+                }
+            }
+
+            if root.found: Param {
+                label: I18n.t("beats.offset");
+                help: I18n.t("beats.offsetHelp");
+                value <=> root.offset;
+                minimum: -1000;
+                maximum: 1000;
+                step: 1;
+                default-value: 0;
+                fmt: ParamFormat.plain;
+                unit: "ms";
+                changed(v) => { root.count(root.selected.beats-bars, root.selected.beats-hidden); }
+            }
+
+            if root.found: SwitchRow {
+                label: I18n.t("beats.show");
+                checked: !root.selected.beats-hidden;
+                toggled(on) => { root.count(root.selected.beats-bars, !on); }
+            }
+        }
+    }
+}
