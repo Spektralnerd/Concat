@@ -507,6 +507,7 @@ pub(super) fn apply(
                         placeholder: false,
                         color_range: None,
                         color_space: item.color_space,
+                        beats: None,
                         extra: Default::default(),
                     });
                     id
@@ -638,6 +639,7 @@ pub(super) fn apply(
                         placeholder: false,
                         color_range: None,
                         color_space: item.color_space,
+                        beats: None,
                         extra: Default::default(),
                     });
                     id

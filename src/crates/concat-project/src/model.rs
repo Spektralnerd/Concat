@@ -214,6 +214,12 @@ pub struct MediaItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
     pub origin: Option<MediaOrigin>,
+    /// The beats found in the file's sound and the grid the lanes count on
+    /// them; see [`crate::beats`]. Absent, and left out of the document,
+    /// until they are looked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "wire::maybe")]
+    pub beats: Option<crate::beats::BeatGrid>,
     /// Fields this build does not know, kept so a document written by a
     /// newer or a different build round-trips through this one intact.
     #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]

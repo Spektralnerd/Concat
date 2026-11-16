@@ -178,29 +178,7 @@ pub struct Analysis {
     pub confidence: f32,
 }
 
-/// Which of `accents`' beats, counted from the first, starts a bar of
-/// `per_bar` beats: the phase whose beats are, on average, the most
-/// accented. Zero when there are no beats or a bar is one beat.
-pub fn downbeat(accents: &[f32], per_bar: usize) -> usize {
-    if per_bar <= 1 || accents.is_empty() {
-        return 0;
-    }
-    let mut best = (0, f32::NEG_INFINITY);
-    for phase in 0..per_bar.min(accents.len()) {
-        let (sum, count) = accents
-            .iter()
-            .skip(phase)
-            .step_by(per_bar)
-            .fold((0.0f32, 0usize), |(sum, count), accent| {
-                (sum + accent, count + 1)
-            });
-        let mean = sum / count.max(1) as f32;
-        if mean > best.1 {
-            best = (phase, mean);
-        }
-    }
-    best.0
-}
+pub use concat_core::beats::downbeat;
 
 /// The streaming analyser: samples in with [`Detector::push`], the beats
 /// out of [`Detector::finish`].

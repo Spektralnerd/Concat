@@ -21,6 +21,7 @@
 //! document model needs serde, and concat-core's zero-dependency rule is worth
 //! more than the adjacency.
 
+pub mod beats;
 pub mod capcut;
 pub mod commands;
 #[cfg(test)]
@@ -3912,6 +3913,104 @@ mod tests {
         );
     }
 
+    /// A song's beats are kept on its bin entry, saved with the project,
+    /// tidied on the way in, refused with a NaN in them, and undone like
+    /// any edit.
+    #[test]
+    fn a_medias_beats_are_an_undoable_edit_that_round_trips() {
+        use crate::beats::{BeatGrid, BeatMark, clip_beats};
+        let (mut editor, media_id, clip_id) = fixture();
+        assert_eq!(editor.project().media[0].beats, None);
+        let before = editor.project().clone();
+        let grid = BeatGrid::found(
+            120.0,
+            (0..16).map(|index| f64::from(index) * 0.5).collect(),
+            vec![2.0, 0.0, 0.0, 0.0].repeat(4),
+            0.9,
+            4,
+            1,
+            true,
+        );
+        let view = editor
+            .apply(Command::SetMediaBeats {
+                media_id: media_id.clone(),
+                beats: Some(grid.clone()),
+            })
+            .expect("sets");
+        assert!(view.applied);
+        assert_eq!(editor.project().media[0].beats.as_ref(), Some(&grid));
+
+        // The clip of the song plays its beats, a bar line every four.
+        let clip = editor
+            .project()
+            .active()
+            .clips
+            .iter()
+            .find(|clip| clip.id == clip_id)
+            .expect("the fixture's clip")
+            .clone();
+        let marks = clip_beats(&clip, &editor.project().media[0]);
+        assert!(!marks.is_empty());
+        assert_eq!(marks[0].1, BeatMark::Line);
+        assert_eq!(marks[1].1, BeatMark::Beat);
+
+        // Saved, read back; a project without beats says nothing of them.
+        let saved = editor.to_document(&settings());
+        assert_eq!(saved["media"][0]["beats"]["perBar"], 4);
+        let reopened = Editor::from_document(&saved).expect("loads");
+        assert_eq!(reopened.project().media[0].beats.as_ref(), Some(&grid));
+        let untold = crate::doc::to_document(&settings(), &before);
+        assert!(untold["media"][0].get("beats").is_none());
+        // Beats this build cannot read are no beats, not a media item lost.
+        let mut odd = saved.clone();
+        odd["media"][0]["beats"] = json!("lots");
+        let tolerant = Editor::from_document(&odd).expect("loads");
+        assert_eq!(tolerant.project().media.len(), 1);
+        assert_eq!(tolerant.project().media[0].beats, None);
+
+        // Tidied on the way in; a NaN is refused and changes nothing.
+        let mut wild = grid.clone();
+        wild.every = 0;
+        wild.first = -1;
+        editor
+            .apply(Command::SetMediaBeats {
+                media_id: media_id.clone(),
+                beats: Some(wild),
+            })
+            .expect("sets");
+        let kept = editor.project().media[0].beats.clone().expect("beats");
+        assert_eq!((kept.every, kept.first), (1, 3));
+        let mut broken = grid.clone();
+        broken.offset = f64::NAN;
+        assert!(
+            editor
+                .apply(Command::SetMediaBeats {
+                    media_id: media_id.clone(),
+                    beats: Some(broken),
+                })
+                .is_err()
+        );
+        assert_eq!(editor.project().media[0].beats.as_ref(), Some(&kept));
+
+        // Dropped, and the drop undone.
+        editor
+            .apply(Command::SetMediaBeats {
+                media_id: media_id.clone(),
+                beats: None,
+            })
+            .expect("drops");
+        assert_eq!(editor.project().media[0].beats, None);
+        editor.undo();
+        assert_eq!(editor.project().media[0].beats.as_ref(), Some(&kept));
+        let gone = editor
+            .apply(Command::SetMediaBeats {
+                media_id: "m999".to_owned(),
+                beats: None,
+            })
+            .expect("an unknown item is a no-op");
+        assert!(!gone.applied);
+    }
+
     #[test]
     fn a_slot_fills_in_place_keeping_the_template_timing() {
         let (mut editor, media_id, clip_id) = fixture();
@@ -5321,6 +5420,22 @@ mod tests {
             Command::RemoveFont {
                 family: "Inter".to_owned(),
             },
+            Command::SetMediaBeats {
+                media_id: "m1".to_owned(),
+                beats: Some(crate::beats::BeatGrid::found(
+                    118.5,
+                    vec![0.5, 1.0, 1.5, 2.0],
+                    vec![1.0, -0.5, 0.25, -0.75],
+                    0.8,
+                    4,
+                    2,
+                    true,
+                )),
+            },
+            Command::SetMediaBeats {
+                media_id: "m1".to_owned(),
+                beats: None,
+            },
         ];
         for command in commands {
             let wire = serde_json::to_value(&command).expect("serialises");
@@ -5508,6 +5623,7 @@ mod tests {
             color_range: None,
             color_space: Default::default(),
             origin: None,
+            beats: None,
             extra: Default::default(),
         });
 
@@ -5547,6 +5663,7 @@ mod tests {
             color_range: None,
             color_space: Default::default(),
             origin: None,
+            beats: None,
             extra: Default::default(),
         });
 

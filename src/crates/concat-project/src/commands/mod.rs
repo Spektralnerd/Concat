@@ -996,6 +996,17 @@ pub enum Command {
         /// own tag.
         range: Option<ColorRange>,
     },
+    /// Keeps the beats found in a media file's sound, and the grid counted
+    /// on them, on its bin entry - or drops them with None. Reaches every
+    /// clip of the media, on every timeline: their lines on the lanes and
+    /// what cuts snap to. The grid is tidied into range on the way in (see
+    /// `BeatGrid::tidy`). An unknown id is a no-op.
+    SetMediaBeats {
+        /// The bin item.
+        media_id: String,
+        /// The beats and their grid, or None for none.
+        beats: Option<crate::beats::BeatGrid>,
+    },
 }
 
 /// What a command produced, beyond the new state: the ids it minted, so the
@@ -1299,6 +1310,9 @@ impl Command {
             }
             Command::SetClipSpeed { speed, .. } => bad([*speed]),
             Command::FrameClip { at, .. } => bad([*at]),
+            Command::SetMediaBeats {
+                beats: Some(grid), ..
+            } => bad(grid.numbers()),
             Command::SetTimelineBackground {
                 background: Background::Blur { amount },
                 ..
@@ -1374,7 +1388,8 @@ pub fn apply(
         | Command::AddFont { .. }
         | Command::RemoveFont { .. }
         | Command::UpdateMediaPath { .. }
-        | Command::SetMediaColorRange { .. }) => media::apply(project, mint, command),
+        | Command::SetMediaColorRange { .. }
+        | Command::SetMediaBeats { .. }) => media::apply(project, mint, command),
         command @ (Command::AddClip { .. }
         | Command::AddClipAtFirstFree { .. }
         | Command::AddClipsInSequence { .. }

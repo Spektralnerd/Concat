@@ -454,19 +454,6 @@ fn silence_noise_and_a_moment_have_no_beats_and_do_not_fail() {
 }
 
 #[test]
-fn the_phase_is_the_most_accented_and_any_bar_length_works() {
-    let accents = [0.1, 2.0, -0.5, 0.0, 0.2, 1.8, -0.4, 0.1, 0.0, 2.2];
-    assert_eq!(downbeat(&accents, 4), 1);
-    assert_eq!(downbeat(&accents, 1), 0);
-    assert_eq!(downbeat(&[], 4), 0);
-    // Three to a bar: phase 1 holds 2.0, 0.2 and 0.1, more on average than
-    // phase 0's 0.1, 0.0, -0.4 and 2.2 or phase 2's -0.5, 1.8 and 0.0.
-    assert_eq!(downbeat(&accents, 3), 1);
-    // More beats to a bar than there are beats: only the beats there are.
-    assert_eq!(downbeat(&accents[..2], 4), 1);
-}
-
-#[test]
 fn the_fft_finds_a_sine_in_its_bin() {
     let size = 64;
     let fft = Fft::new(size);

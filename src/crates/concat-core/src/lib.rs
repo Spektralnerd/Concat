@@ -18,6 +18,7 @@
 
 pub mod animate;
 pub mod arena;
+pub mod beats;
 pub mod frame;
 pub mod mask;
 pub mod motion;
