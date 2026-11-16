@@ -10,6 +10,7 @@ import { SegmentedControl } from "../primitives/segmented-control.slint";
 import { Select } from "../primitives/select.slint";
 import { FontPicker } from "font-picker.slint";
 import { NumberField } from "../primitives/number-field.slint";
+import { Fmt } from "../util.slint";
 import { Button } from "../primitives/modal.slint";
 import {
     ColourField, HelpButton, InspectorFmt, Param, ParamFormat, SwitchRow,
@@ -723,7 +724,7 @@ export component TextPanel inherits VerticalLayout {
                     maximum: root.frame-w * 2;
                     step: 1;
                     format(v) => { return v <= 0 ? "–" : "\{Math.round(v)}"; }
-                    parse(t) => { return t.is-float() ? Math.max(1, t.to-float()) : root.box-w; }
+                    parse(t) => { return Fmt.is-number(t) ? Math.max(1, Fmt.number-or(t, 1)) : root.box-w; }
                     changed(v) => { root.set(ClipField.text-width, v / root.frame-w); root.commit(); }
                 }
                 Select {
@@ -749,7 +750,7 @@ export component TextPanel inherits VerticalLayout {
                     maximum: root.frame-h * 2;
                     step: 1;
                     format(v) => { return v <= 0 ? "–" : "\{Math.round(v)}"; }
-                    parse(t) => { return t.is-float() ? Math.max(1, t.to-float()) : root.box-h; }
+                    parse(t) => { return Fmt.is-number(t) ? Math.max(1, Fmt.number-or(t, 1)) : root.box-h; }
                     changed(v) => { root.set(ClipField.text-height, v / root.frame-h); root.commit(); }
                 }
                 Select {

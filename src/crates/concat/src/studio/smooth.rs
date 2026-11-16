@@ -170,6 +170,13 @@ impl Studio {
             span,
             target,
         };
+        log::info!(
+            "smooth: making {} {factor}x by {}, {:.2}s from {:.2}s",
+            media.name,
+            method.name(),
+            span.1,
+            span.0
+        );
         let clip_id = clip.id.clone();
         self.smooth_jobs.insert(clip_id.clone(), (false, 0.0));
         self.notify(
@@ -212,14 +219,29 @@ impl Studio {
                 let ticked = studio
                     .clip(&clip_id)
                     .is_some_and(|clip| studio.smooth_ticked(clip));
+                // Each ending says so in the log, which is all there is to go
+                // on when a phone's run comes back and nothing changes.
                 match result {
                     Ok(path) if ticked => {
                         studio.smooth_ticked.remove(&clip_id);
                         studio.adopt_smooth(&clip_id, &path, factor, method, span.0);
                     }
-                    Ok(_) => {}
-                    Err(error) if error.contains("cancelled") => {}
-                    Err(error) => studio.notify(&tf("studio.smooth", &[&error]), true),
+                    Ok(path) => log::info!(
+                        "smooth: {} is made, but its clip is {}; it waits in the cache",
+                        path.display(),
+                        if studio.clip(&clip_id).is_some() {
+                            "no longer ticked"
+                        } else {
+                            "gone"
+                        }
+                    ),
+                    Err(error) if error.contains("cancelled") => {
+                        log::info!("smooth: stopped");
+                    }
+                    Err(error) => {
+                        log::warn!("smooth: {error}");
+                        studio.notify(&tf("studio.smooth", &[&error]), true);
+                    }
                 }
             },
         );
@@ -241,12 +263,17 @@ impl Studio {
         };
         let start = Self::smooth_original_start(&clip) - offset;
         if start < -1e-6 {
-            self.notify(&t("studio.clipChangedWhileBeing"), true);
+            log::warn!(
+                "smooth: the clip now starts {:.3}s before its copy does; not shown",
+                -start
+            );
+            self.notify(&t("studio.smoothClipMoved"), true);
             return;
         }
         let summary = match media::probe(&path.to_string_lossy()) {
             Ok(summary) => summary,
             Err(error) => {
+                log::warn!("smooth: {} could not be read: {error}", path.display());
                 self.notify(&tf("studio.smooth", &[&error]), true);
                 return;
             }
@@ -265,7 +292,11 @@ impl Studio {
         if let Some(length) = item.duration
             && start + clip.duration * clip.speed > length + 0.05
         {
-            self.notify(&t("studio.clipChangedWhileBeing"), true);
+            log::warn!(
+                "smooth: the clip needs {:.3}s of its copy from {start:.3}s, and the copy holds {length:.3}s; not shown",
+                clip.duration * clip.speed
+            );
+            self.notify(&t("studio.smoothClipMoved"), true);
             return;
         }
         self.apply(Command::SmoothClip {

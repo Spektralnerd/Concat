@@ -1144,7 +1144,7 @@
   "export.audioPcm": "Unkomprimiert, groß",
   "export.audioNotIn": "Nicht in einer {0}-Datei",
   "smooth.title": "Flüssige Zeitlupe",
-  "smooth.help": "Berechnet Bilder zwischen den Bildern der Datei, damit ein verlangsamter Clip in jedem Bild ein neues Bild zeigt, statt jedes festzuhalten. Dafür wird einmal eine Kopie des Abschnitts geschrieben, den der Clip zeigt, mit zwei, vier oder acht Bildern pro Bild der Datei, und der Clip zeigt diese Kopie. Tempo, Kurve und Länge bleiben, wie sie sind. Mit dem Schalter wechselst du zwischen Kopie und Original. KI verschiebt alles dorthin, wo es zwischendurch war (RIFE). Überblenden blendet die Bilder ineinander. Klassisch ist die Bewegungsinterpolation von FFmpeg. Wo die Datei dasselbe Bild doppelt hat oder auf eine andere Einstellung schneidet, wird das Bild gehalten.",
+  "smooth.help": "Berechnet Bilder zwischen den Bildern der Datei, damit ein verlangsamter Clip in jedem Bild ein neues Bild zeigt, statt jedes festzuhalten. Dafür wird einmal eine Kopie des Abschnitts geschrieben, den der Clip zeigt, mit 2 bis 32 Bildern pro Bild der Datei, und der Clip zeigt diese Kopie. Nimm so viele, wie du verlangsamst: ein Viertel braucht 4, ein Sechzehntel 16. Mehr Bilder dauern entsprechend länger. Tempo, Kurve und Länge bleiben, wie sie sind. Mit dem Schalter wechselst du zwischen Kopie und Original. KI verschiebt alles dorthin, wo es zwischendurch war (RIFE). Überblenden blendet die Bilder ineinander. Klassisch ist die Bewegungsinterpolation von FFmpeg. Wo die Datei dasselbe Bild doppelt hat oder auf eine andere Einstellung schneidet, wird das Bild gehalten.",
   "smooth.fetchingModel": "Lade das Zwischenbild-Modell",
   "smooth.working": "Berechne Zwischenbilder",
   "smooth.showingCopy": "Zeigt die flüssige Fassung ({0})",
@@ -1164,5 +1164,6 @@
   "studio.smoothingFrames": "{0} wird flüssig, {1} Bilder pro Bild",
   "studio.smooth": "Flüssige Zeitlupe: {0}",
   "studio.smoothClipNowShows": "Der Clip zeigt jetzt die flüssige Fassung",
+  "studio.smoothClipMoved": "Der Clip zeigt mehr vom Video, als die flüssige Kopie enthält; berechne sie neu",
   "speedRamp.velocity": "Velocity"
 }

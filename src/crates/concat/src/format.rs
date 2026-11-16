@@ -40,12 +40,21 @@ pub fn frames_timecode(seconds: f32, rate: f32) -> String {
     )
 }
 
+/// One part of a typed time, with a point or a comma for its decimals: a
+/// German keyboard gives "1,5", and that read as nothing - zero.
+fn typed_number(part: &str) -> f32 {
+    let part = part.trim();
+    part.parse::<f32>()
+        .or_else(|_| part.replace(',', ".").parse::<f32>())
+        .unwrap_or(0.0)
+}
+
 /// "hh:mm:ss", "mm:ss" or "ss" -> seconds. Slint's string type has no split().
 pub fn parse_timecode(text: &str) -> f32 {
     text.split(':')
         .rev()
         .enumerate()
-        .map(|(index, part)| part.trim().parse::<f32>().unwrap_or(0.0) * 60_f32.powi(index as i32))
+        .map(|(index, part)| typed_number(part) * 60_f32.powi(index as i32))
         .sum()
 }
 
@@ -54,10 +63,7 @@ pub fn parse_timecode(text: &str) -> f32 {
 /// a timecode field that is already showing them the shape.
 pub fn parse_frames(text: &str, rate: f32) -> f32 {
     let fps = rate.round().max(1.0);
-    let parts: Vec<f32> = text
-        .split(':')
-        .map(|part| part.trim().parse::<f32>().unwrap_or(0.0))
-        .collect();
+    let parts: Vec<f32> = text.split(':').map(typed_number).collect();
     let frames = parts.last().copied().unwrap_or(0.0);
     let seconds: f32 = parts
         .iter()
@@ -407,6 +413,15 @@ pub fn hex_with_alpha(colour: slint::Color) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_typed_time_takes_a_comma_for_its_decimals() {
+        assert!((super::parse_timecode("1,5") - 1.5).abs() < 1e-6);
+        assert!((super::parse_timecode("1.5") - 1.5).abs() < 1e-6);
+        assert!((super::parse_timecode("2:03,25") - 123.25).abs() < 1e-4);
+        assert_eq!(super::parse_timecode("nonsense"), 0.0);
+        assert!((super::parse_frames("1:12,0", 25.0) - 37.0).abs() < 1e-6);
+    }
+
     use super::*;
 
     #[test]

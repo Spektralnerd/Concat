@@ -77,16 +77,21 @@ export component SmoothPanel inherits VerticalLayout {
                     : I18n.t("smooth.showingOriginal");
             }
 
-            // Frames for each of the file's: two, four or eight.
+            // Frames for each of the file's, two to thirty-two: as many as
+            // the clip is slowed by, so a sixteenth wants sixteen.
             Row {
                 label: I18n.t("smooth.frames");
                 SegmentedControl {
                     horizontal-stretch: 1;
-                    options: ["2×", "4×", "8×"];
-                    current: root.selected.smooth-factor >= 8 ? 2 : root.selected.smooth-factor >= 4 ? 1 : 0;
+                    options: ["2×", "4×", "8×", "16×", "32×"];
+                    current: root.selected.smooth-factor >= 32 ? 4
+                        : root.selected.smooth-factor >= 16 ? 3
+                        : root.selected.smooth-factor >= 8 ? 2
+                        : root.selected.smooth-factor >= 4 ? 1 : 0;
                     enabled: root.live && !root.running;
                     changed(index) => {
-                        Editor.clip-smooth-factor(index == 2 ? 8 : index == 1 ? 4 : 2);
+                        Editor.clip-smooth-factor(index == 4 ? 32 : index == 3 ? 16
+                            : index == 2 ? 8 : index == 1 ? 4 : 2);
                     }
                 }
             }

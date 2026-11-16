@@ -482,7 +482,7 @@ export component Param inherits VerticalLayout {
                     InspectorFmt.precision-of(root.step * root.unit-scale));
             }
             parse(t) => {
-                return t.is-float() ? t.to-float() / root.unit-scale : root.value;
+                return Fmt.is-number(t) ? Fmt.number-or(t, 0) / root.unit-scale : root.value;
             }
             changed(v) => { root.changed(v); }
         }
@@ -529,7 +529,7 @@ export component Param inherits VerticalLayout {
                     InspectorFmt.precision-of(root.step * root.unit-scale));
             }
             parse(t) => {
-                return t.is-float() ? t.to-float() / root.unit-scale : root.value;
+                return Fmt.is-number(t) ? Fmt.number-or(t, 0) / root.unit-scale : root.value;
             }
             changed(v) => { root.changed(v); }
         }

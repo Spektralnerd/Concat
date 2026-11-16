@@ -30,6 +30,29 @@ export global Fmt {
         return Math.round(v * Math.pow(10, digits)) / Math.pow(10, digits);
     }
 
+    /// Whether `text` is a number with either mark for its decimals. Slint
+    /// reads only its locale's own - a point here - and refuses the other
+    /// outright, so "0,25" typed on a German keyboard was no number and a
+    /// field put its old value back, whatever had been typed.
+    public pure function is-number(text: string) -> bool {
+        return text.is-float() || text.replace-all(",", ".").is-float()
+            || text.replace-all(".", ",").is-float();
+    }
+
+    /// The number in `text`, read as [`is-number`] reads it, or `fallback`.
+    public pure function number-or(text: string, fallback: float) -> float {
+        if text.is-float() {
+            return text.to-float();
+        }
+        if text.replace-all(",", ".").is-float() {
+            return text.replace-all(",", ".").to-float();
+        }
+        if text.replace-all(".", ",").is-float() {
+            return text.replace-all(".", ",").to-float();
+        }
+        return fallback;
+    }
+
     public pure function pad2(n: int) -> string {
         return n < 10 ? "0\{n}" : "\{n}";
     }

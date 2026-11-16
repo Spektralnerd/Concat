@@ -6,7 +6,7 @@
 //!
 //! A clip slowed to a quarter shows each of its file's frames four times
 //! over, and it stutters. Made smooth, it is pointed at a copy of its span
-//! with two, four or eight frames for each of the file's - the original
+//! with two to thirty-two frames for each of the file's - the original
 //! frames where they were and new ones between - so the same speed plays
 //! a fresh picture every time. The copy lasts as long as the span and
 //! starts where the span does, so the clip's in-point, length, speed and
@@ -88,7 +88,7 @@ impl Method {
 /// How many frames a copy may have for each of its file's: two, four or
 /// eight. More is offered nowhere: a quarter speed is smooth at four, and
 /// past eight the copy outgrows any use.
-pub const FACTORS: [u32; 3] = [2, 4, 8];
+pub const FACTORS: [u32; 5] = [2, 4, 8, 16, 32];
 
 /// The factor a request asks for, held to what is offered.
 pub fn factor_of(asked: u32) -> u32 {
@@ -99,10 +99,11 @@ pub fn factor_of(asked: u32) -> u32 {
         .unwrap_or(4)
 }
 
-/// The most frames a second a copy is written at. A 60 fps file at eight
-/// times would be 480, which no phone's encoder takes and no use needs; it
-/// is made at four instead.
-pub const MAX_RATE: f64 = 240.0;
+/// The most frames a second a copy is written at: MPEG-4's own limit, its
+/// clock counting at most 65535 ticks a second. Nothing short of it is held
+/// back - a slow-down to a sixteenth wants sixteen frames for each, and a
+/// 60 fps file at that is 960 a second - only the time it takes grows.
+pub const MAX_RATE: f64 = 65535.0;
 
 /// How far apart two frames may be, as the mean difference of a small
 /// picture of each, before they are taken for a cut rather than motion:
@@ -570,15 +571,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_factor_is_two_four_or_eight_and_never_past_the_rate_cap() {
+    fn a_factor_is_two_to_thirty_two_and_never_past_the_rate_cap() {
         assert_eq!(factor_of(3), 2);
         assert_eq!(factor_of(4), 4);
-        assert_eq!(factor_of(100), 8);
+        assert_eq!(factor_of(16), 16);
+        assert_eq!(factor_of(100), 32);
         assert_eq!(effective_factor(8, 24.0), 8);
-        assert_eq!(effective_factor(8, 30.0), 8);
-        assert_eq!(effective_factor(8, 60.0), 4);
-        assert_eq!(effective_factor(4, 120.0), 2);
-        assert_eq!(effective_factor(2, 240.0), 2);
+        assert_eq!(effective_factor(16, 25.0), 16);
+        assert_eq!(effective_factor(32, 60.0), 32);
+        assert_eq!(effective_factor(16, 240.0), 16);
+        // Past MPEG-4's clock only: 4000 fps at 32 is 128000, so 16.
+        assert_eq!(effective_factor(32, 4000.0), 16);
+        assert_eq!(effective_factor(2, 100_000.0), 2);
     }
 
     #[test]

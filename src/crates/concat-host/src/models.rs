@@ -170,14 +170,24 @@ pub fn sources(file: &str, upstream: &str) -> Vec<String> {
     sources_for(file, upstream, preference, &custom_base)
 }
 
+/// Files Concat's own release does not carry: models this fork added, kept
+/// where the fork keeps them. Asking the release first only got a 404 - and
+/// a warning in every log - before the download began.
+const UNMIRRORED: &[&str] = &["rife-v4.6-flow.onnx"];
+
 fn sources_for(
     file: &str,
     upstream: &str,
     preference: SourcePreference,
     custom_base: &str,
 ) -> Vec<String> {
-    let github = mirror(file);
-    let hugging_face = (!HF_REPO.is_empty())
+    let mirrored = !UNMIRRORED.contains(&file);
+    let github = if mirrored {
+        mirror(file)
+    } else {
+        String::new()
+    };
+    let hugging_face = (mirrored && !HF_REPO.is_empty())
         .then(|| format!("https://huggingface.co/{HF_REPO}/resolve/main/{file}"));
     let custom = (!custom_base.is_empty()).then(|| format!("{custom_base}/{file}"));
     // hf-mirror carries whatever Hugging Face does: our own repository
@@ -642,6 +652,18 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_the_release_lacks_is_asked_only_where_it_is() {
+        let upstream =
+            "https://raw.githubusercontent.com/Spektralnerd/Concat/x/models/rife-v4.6-flow.onnx";
+        for preference in [SourcePreference::Auto, SourcePreference::Mirror] {
+            assert_eq!(
+                sources_for("rife-v4.6-flow.onnx", upstream, preference, ""),
+                vec![upstream.to_owned()]
+            );
+        }
+    }
 
     #[test]
     fn the_mirror_comes_before_upstream() {

@@ -52,7 +52,7 @@ export component NumberField inherits Rectangle {
 
     pure callback parse(text: string) -> float;
     parse(t) => {
-        return t.is-float() ? t.to-float() : root.value;
+        return Fmt.number-or(t, root.value);
     }
 
     property <string> display: root.format(root.value);
