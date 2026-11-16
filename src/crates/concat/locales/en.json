@@ -1175,7 +1175,7 @@
   "smooth.methodClassic": "Classic",
   "smooth.aboutAi": "RIFE moves things to where they were in between: the smoothest, about a second a frame on a phone. The model, 21 MB, is downloaded once.",
   "smooth.aboutBlend": "The two frames faded into each other: done at once, but moving things leave a ghost.",
-  "smooth.aboutClassic": "FFmpeg's own motion interpolation, nothing to download: slower than AI and blockier where things move fast.",
+  "smooth.aboutClassic": "FFmpeg's own motion interpolation, nothing to download: blockier than AI where things move fast.",
   "smooth.stop": "Stop",
   "smooth.make": "Make smooth",
   "smooth.makeAgain": "Make again",
