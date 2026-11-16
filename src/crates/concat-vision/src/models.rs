@@ -42,6 +42,10 @@ pub enum ModelId {
     SpleeterVocals,
     /// Spleeter's accompaniment network: everything but the singing.
     SpleeterAccompaniment,
+    /// RIFE v4.6's flow network: where each pixel was in the frames either
+    /// side of a moment between them, what smooth slow motion is made of.
+    /// See [`crate::tween`].
+    Tween,
 }
 
 /// One model as the table describes it.
@@ -65,7 +69,7 @@ pub struct ModelSpec {
 }
 
 /// Every downloadable model.
-pub const MODELS: [ModelSpec; 7] = [
+pub const MODELS: [ModelSpec; 8] = [
     ModelSpec {
         id: ModelId::Person,
         file: "rvm-mobilenetv3.onnx",
@@ -125,6 +129,17 @@ pub const MODELS: [ModelSpec; 7] = [
         sha256: "d14cea55793cc531a5875f5f4da08207d1c5ab9292e8e0099a104eecb014fcc0",
         licence: "MIT",
     },
+    // Practical-RIFE's v4.6 flow network (MIT), exported by the fork with
+    // its motion and mask as the answer (models/rife/README.md), and
+    // fetched from the commit that added it there.
+    ModelSpec {
+        id: ModelId::Tween,
+        file: "rife-v4.6-flow.onnx",
+        upstream: "https://raw.githubusercontent.com/Spektralnerd/Concat/3361594505e3519a2456610bdf347223fdbaa4ec/models/rife-v4.6-flow.onnx",
+        bytes: 21_295_554,
+        sha256: "ab2ab9d9a1093ecca370bd55012855a183f7eb3c0daa3c69fd539dc95472b334",
+        licence: "MIT",
+    },
 ];
 
 impl ModelId {
@@ -146,6 +161,7 @@ impl ModelId {
             ModelId::Enhance => "realesr-general-x4v3",
             ModelId::SpleeterVocals => "spleeter-2stems-vocals",
             ModelId::SpleeterAccompaniment => "spleeter-2stems-accompaniment",
+            ModelId::Tween => "rife-v4.6-flow",
         }
     }
 }

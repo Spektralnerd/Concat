@@ -105,6 +105,17 @@ sha256 = "d14cea55793cc531a5875f5f4da08207d1c5ab9292e8e0099a104eecb014fcc0"
 licence = "MIT"
 upstream = "https://huggingface.co/csukuangfj/sherpa-onnx-spleeter-2stems-fp16/resolve/93ba771920ade509f8cbd6825b1a90856c797e08/accompaniment.fp16.onnx"
 
+# The fork's smooth slow motion: RIFE v4.6 as models/rife/README.md says,
+# fetched from the commit that added it (no mirror of the fork's own).
+[[model]]
+id = "tween-rife"
+family = "cutout"
+file = "rife-v4.6-flow.onnx"
+bytes = 21295554
+sha256 = "ab2ab9d9a1093ecca370bd55012855a183f7eb3c0daa3c69fd539dc95472b334"
+licence = "MIT"
+upstream = "https://raw.githubusercontent.com/Spektralnerd/Concat/3361594505e3519a2456610bdf347223fdbaa4ec/models/rife-v4.6-flow.onnx"
+
 # ── Text to speech ───────────────────────────────────────────────────────
 # Kokoro and Pocket TTS left the app with sherpa-onnx (e63756df). Their
 # files stay on the mirror, which nothing prunes, because 0.2.8 and older
