@@ -105,6 +105,11 @@ pub enum Error {
         got_height: u32,
     },
 
+    /// Fork: the work was stopped from outside before it was done: an
+    /// export cancelled while its sound was being mixed.
+    #[error("stopped")]
+    Stopped,
+
     /// The linked FFmpeg was built without something this operation needs -
     /// an encoder, a filter, a muxer.
     #[error("the linked FFmpeg has no {what} {name:?}")]

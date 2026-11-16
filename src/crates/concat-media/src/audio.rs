@@ -706,6 +706,21 @@ pub fn mix_to_file_with(
     duration: f64,
     destination: &Path,
 ) -> Result<()> {
+    mix_to_file_reporting(clips, buses, duration, destination, &mut |_| true)
+}
+
+/// Fork: [`mix_to_file_with`] saying how far it has got. `progress` hears
+/// the share of the mix written, `0..=1`, after every frame the encoder
+/// takes, and stops the mix with [`Error::Stopped`] by answering false: a
+/// long sound is minutes on a phone, and an export's bar stood at nothing
+/// for all of them with its Cancel unheard.
+pub fn mix_to_file_reporting(
+    clips: &[AudioClip],
+    buses: &[AudioBus],
+    duration: f64,
+    destination: &Path,
+    progress: &mut dyn FnMut(f64) -> bool,
+) -> Result<()> {
     let extension = destination
         .extension()
         .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
@@ -721,7 +736,7 @@ pub fn mix_to_file_with(
         {
             validate_chain(chain)?;
         }
-        return android_aac::mix(clips, buses, duration, destination);
+        return android_aac::mix(clips, buses, duration, destination, progress);
     }
     let (codec_name, mix_format) = if wav {
         (
@@ -833,6 +848,7 @@ pub fn mix_to_file_with(
         }
     };
 
+    let mut said = Said::new(samples);
     run_mix(
         clips,
         buses,
@@ -844,7 +860,8 @@ pub fn mix_to_file_with(
             encoder
                 .send_frame(mixed)
                 .map_err(|error| ffi::fail("encode", destination, error))?;
-            drain(&mut encoder, &mut output)
+            drain(&mut encoder, &mut output)?;
+            said.took(mixed.samples(), progress)
         },
     )?;
 
@@ -898,6 +915,37 @@ pub fn mix_pcm(
             write(&plane[..bytes.min(plane.len())])
         },
     )
+}
+
+/// Fork: how much of a mix has been written, said to a progress report
+/// after each frame - and the report's answer, whether to go on.
+pub(super) struct Said {
+    total: f64,
+    done: u64,
+}
+
+impl Said {
+    /// For a mix of `samples` samples a channel.
+    pub(super) fn new(samples: i64) -> Self {
+        Said {
+            total: samples.max(1) as f64,
+            done: 0,
+        }
+    }
+
+    /// `samples` more written: says so, and stops the mix when told to.
+    pub(super) fn took(
+        &mut self,
+        samples: usize,
+        progress: &mut dyn FnMut(f64) -> bool,
+    ) -> Result<()> {
+        self.done += samples as u64;
+        if progress((self.done as f64 / self.total).min(1.0)) {
+            Ok(())
+        } else {
+            Err(Error::Stopped)
+        }
+    }
 }
 
 /// Opens the clips heard inside `window`, builds their graph and runs it,
@@ -2071,6 +2119,47 @@ mod tests {
             }
             assert!(audible);
         }
+        std::fs::remove_dir_all(dir).expect("removes test files");
+    }
+
+    /// Fork: a mix says how far it has got, forward only and up to the
+    /// whole of it, and stops where it is told to.
+    #[test]
+    fn a_mix_reports_its_progress_and_stops_when_told() {
+        let dir = std::env::temp_dir().join(format!("concat-mix-progress-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("creates a folder");
+        let source = dir.join("tone.wav");
+        tone_wav(&source, 2.0);
+        let piece = AudioClip {
+            path: source,
+            duration: 2.0,
+            ..clip("")
+        };
+        let output = dir.join("mixed.m4a");
+        let mut heard = Vec::new();
+        mix_to_file_reporting(&[piece.clone()], &[], 2.0, &output, &mut |fraction| {
+            heard.push(fraction);
+            true
+        })
+        .expect("mixes");
+        assert!(heard.len() > 10, "{} reports", heard.len());
+        assert!(
+            heard.windows(2).all(|pair| pair[0] <= pair[1]),
+            "forward only"
+        );
+        assert_eq!(heard.last().copied(), Some(1.0), "up to the whole");
+
+        let mut asked = 0;
+        let stopped = mix_to_file_reporting(&[piece], &[], 2.0, &output, &mut |fraction| {
+            asked += 1;
+            fraction < 0.5
+        });
+        assert!(matches!(stopped, Err(Error::Stopped)), "{stopped:?}");
+        assert!(
+            asked < heard.len(),
+            "stopped part way: {asked} of {}",
+            heard.len()
+        );
         std::fs::remove_dir_all(dir).expect("removes test files");
     }
 

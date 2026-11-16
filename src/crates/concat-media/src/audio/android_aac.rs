@@ -16,7 +16,7 @@ use ndk::media::media_codec::{
 };
 use ndk::media::media_format::MediaFormat;
 
-use super::{AudioBus, AudioClip, MIX_RATE, run_mix};
+use super::{AudioBus, AudioClip, MIX_RATE, Said, run_mix};
 use crate::error::{Error, Result};
 use crate::ffi;
 
@@ -27,8 +27,28 @@ const FRAME: usize = 1024;
 /// MediaCodec's BUFFER_FLAG_CODEC_CONFIG and BUFFER_FLAG_END_OF_STREAM.
 const CODEC_CONFIG: u32 = 2;
 const END_OF_STREAM: u32 = 4;
-/// How long a dequeue waits before the loop looks the other way.
+/// How long the encoder is waited on when nothing can be done until it
+/// answers: no input buffer free, or the end of the stream still to come.
 const WAIT: Duration = Duration::from_millis(10);
+/// Fork: how many [`WAIT`]s in a row the end of the stream may take before
+/// the encoder is given up on - five seconds, where a working one takes a
+/// frame's time.
+const LAST_WAITS: u32 = 500;
+
+/// Fork: how [`Aac::drain`] waits on the encoder.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Drain {
+    /// Not at all: what is ready is taken and the feed goes on. Waiting
+    /// here held every frame up to a [`WAIT`] for a packet that comes only
+    /// once the next frame is in, and a mix ran at the pace of its own
+    /// sound - three minutes for a three-minute song, at 0 % throughout.
+    Ready,
+    /// Once, up to a [`WAIT`], for a packet: no input buffer is free, and
+    /// the encoder frees one as it hands a packet back.
+    Once,
+    /// Up to the end of the stream.
+    ToEnd,
+}
 /// How many samples Android's encoder holds its sound back by, which its
 /// timestamps do not say: its packets are stamped from the first sample
 /// fed, as if the encoder had no delay, and a click fed at 1.000 s decodes
@@ -105,48 +125,61 @@ impl Aac {
     /// Feeds `pcm`, interleaved 16-bit stereo, and hands every packet the
     /// encoder has ready to `out`. With `pcm` empty and `last`, says the
     /// stream has ended and waits for the rest.
+    ///
+    /// Fork: nothing is waited for that is there to be had. A free input
+    /// buffer is taken at once, what is ready comes out without a wait,
+    /// and the encoder is waited on only while it holds every input buffer.
     fn feed(&mut self, mut pcm: &[u8], last: bool, out: &mut Vec<Packet>) -> Result<()> {
         let frame_bytes = CHANNELS * 2;
         let mut ended = false;
         while !pcm.is_empty() || (last && !ended) {
-            if let DequeuedInputBufferResult::Buffer(mut buffer) = self
+            let queued = match self
                 .codec
-                .dequeue_input_buffer(WAIT)
+                .dequeue_input_buffer(Duration::ZERO)
                 .map_err(|error| self.fail(format!("input: {error}")))?
             {
-                let room = buffer.buffer_mut();
-                let take = pcm.len().min(room.len() / frame_bytes * frame_bytes);
-                for (slot, byte) in room.iter_mut().zip(&pcm[..take]) {
-                    slot.write(*byte);
+                DequeuedInputBufferResult::Buffer(mut buffer) => {
+                    let room = buffer.buffer_mut();
+                    let take = pcm.len().min(room.len() / frame_bytes * frame_bytes);
+                    for (slot, byte) in room.iter_mut().zip(&pcm[..take]) {
+                        slot.write(*byte);
+                    }
+                    let time = self.fed * 1_000_000 / u64::from(MIX_RATE);
+                    let flags = if take == pcm.len() && last {
+                        ended = true;
+                        END_OF_STREAM
+                    } else {
+                        0
+                    };
+                    self.codec
+                        .queue_input_buffer(buffer, 0, take, time, flags)
+                        .map_err(|error| self.fail(format!("queue: {error}")))?;
+                    self.fed += (take / frame_bytes) as u64;
+                    pcm = &pcm[take..];
+                    true
                 }
-                let time = self.fed * 1_000_000 / u64::from(MIX_RATE);
-                let flags = if take == pcm.len() && last {
-                    ended = true;
-                    END_OF_STREAM
-                } else {
-                    0
-                };
-                self.codec
-                    .queue_input_buffer(buffer, 0, take, time, flags)
-                    .map_err(|error| self.fail(format!("queue: {error}")))?;
-                self.fed += (take / frame_bytes) as u64;
-                pcm = &pcm[take..];
-            }
-            self.drain(out, false)?;
+                // Every input buffer is with the encoder: one comes back
+                // as it hands a packet out.
+                DequeuedInputBufferResult::TryAgainLater => false,
+            };
+            self.drain(out, if queued { Drain::Ready } else { Drain::Once })?;
         }
         if last {
-            self.drain(out, true)?;
+            self.drain(out, Drain::ToEnd)?;
         }
         Ok(())
     }
 
-    /// Takes the packets that are ready, or with `to_end` every one up to
-    /// the encoder's end of stream.
-    fn drain(&mut self, out: &mut Vec<Packet>, to_end: bool) -> Result<()> {
+    /// Takes the packets that are ready, waiting on the encoder as `how`
+    /// says: not at all, once, or up to its end of stream.
+    fn drain(&mut self, out: &mut Vec<Packet>, how: Drain) -> Result<()> {
+        let mut wait = how != Drain::Ready;
+        let mut waits = 0u32;
         while !self.finished {
+            let timeout = if wait { WAIT } else { Duration::ZERO };
             match self
                 .codec
-                .dequeue_output_buffer(WAIT)
+                .dequeue_output_buffer(timeout)
                 .map_err(|error| self.fail(format!("output: {error}")))?
             {
                 DequeuedOutputBufferInfoResult::Buffer(buffer) => {
@@ -173,8 +206,24 @@ impl Aac {
                     if flags & END_OF_STREAM != 0 {
                         self.finished = true;
                     }
+                    // After a packet, the rest are what is ready - unless
+                    // the end is what is waited for.
+                    wait = how == Drain::ToEnd;
+                    waits = 0;
                 }
-                DequeuedOutputBufferInfoResult::TryAgainLater if !to_end => return Ok(()),
+                DequeuedOutputBufferInfoResult::TryAgainLater => {
+                    if how != Drain::ToEnd {
+                        return Ok(());
+                    }
+                    waits += 1;
+                    if waits > LAST_WAITS {
+                        return Err(self.fail(format!(
+                            "the encoder held its last packets for {} s",
+                            Duration::from_millis(u64::from(LAST_WAITS) * WAIT.as_millis() as u64)
+                                .as_secs()
+                        )));
+                    }
+                }
                 _ => {}
             }
         }
@@ -204,6 +253,7 @@ pub(super) fn mix(
     buses: &[AudioBus],
     duration: f64,
     destination: &Path,
+    progress: &mut dyn FnMut(f64) -> bool,
 ) -> Result<()> {
     let mut aac = Aac::open(destination)?;
     let mut output = ffmpeg::format::output(destination)
@@ -269,6 +319,7 @@ pub(super) fn mix(
     };
 
     let mut packets = Vec::new();
+    let mut said = Said::new(samples);
     run_mix(
         clips,
         buses,
@@ -279,7 +330,8 @@ pub(super) fn mix(
         |mixed| {
             let bytes = mixed.samples() * CHANNELS * 2;
             aac.feed(&mixed.data(0)[..bytes], false, &mut packets)?;
-            write(&mut packets, &mut output)
+            write(&mut packets, &mut output)?;
+            said.took(mixed.samples(), progress)
         },
     )?;
     // The encoder's delay and a frame more of silence, so the mix's last

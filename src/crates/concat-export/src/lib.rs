@@ -1216,8 +1216,25 @@ pub fn render_on(
             op.step("mix audio");
             let mix: Vec<AudioClip> = sound.iter().flat_map(|clip| audio_pieces(clip)).collect();
             let buses = audio_buses(&resolved);
-            audio::mix_to_file_with(&mix, &buses, timeline_end.as_f64(), &mixed)
-                .map_err(|error| error.to_string())?;
+            // Fork: the bar moves with the mix, a hundred steps at most, and
+            // Cancel stops it where it is rather than after it.
+            let mut shown = 0;
+            audio::mix_to_file_reporting(
+                &mix,
+                &buses,
+                timeline_end.as_f64(),
+                &mixed,
+                &mut |fraction| {
+                    let frame = (fraction * total_frames as f64) as i64;
+                    let percent = (fraction * 100.0) as i64;
+                    if percent > shown {
+                        shown = percent;
+                        reporter.emit(frame, total_frames, "mixing audio");
+                    }
+                    reporter.cancelled().is_ok()
+                },
+            )
+            .map_err(|error| error.to_string())?;
 
             reporter.cancelled()?;
             reporter.emit(total_frames, total_frames, "muxing");
