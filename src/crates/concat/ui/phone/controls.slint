@@ -156,6 +156,11 @@ export component ToolStrip inherits Flickable {
 /// only the axis it can move on, so a slider dragged sideways keeps its
 /// drag and a column dragged up and down scrolls.
 export component PhoneScroll inherits Flickable {
+    // Set, so the Flickable does not take its column's widest as its own:
+    // a page holding a row of fixed parts - Speed's two marks - capped the
+    // whole sheet at that row, and every page on it ran half the screen
+    // wide with its sliders squeezed out.
+    max-width: 100000px;
     content-width: self.width;
     content-height: column.height;
 

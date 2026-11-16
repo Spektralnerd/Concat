@@ -378,10 +378,13 @@ impl Studio {
         self.host.stabilizers.cancel();
         self.host.enhancers.cancel();
         self.host.reversers.cancel();
+        self.host.tweeners.cancel();
         self.enhance_jobs.clear();
         self.enhance_preview = None;
         self.enhance_previewing = None;
         self.enhance_ticked.clear();
+        self.smooth_jobs.clear();
+        self.smooth_ticked.clear();
         self.reverse_jobs.clear();
         self.cancel_merge();
         self.cutout_jobs.clear();

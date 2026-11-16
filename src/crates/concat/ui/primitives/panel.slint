@@ -105,12 +105,18 @@ export component SectionHeader inherits Rectangle {
     animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
 
     // Sits below the row so action buttons, added later in the tree, stay on
-    // top of it; the title Text itself takes no pointer events.
+    // top of it; the title Text itself takes no pointer events. A header
+    // that only switches takes the tap anywhere on its row: the tick alone
+    // is too small a target for a finger.
     head := TouchArea {
-        enabled: root.collapsible;
-        mouse-cursor: root.collapsible ? pointer : default;
+        enabled: root.collapsible || (root.switchable && root.switch-enabled);
+        mouse-cursor: self.enabled ? pointer : default;
         clicked => {
-            root.open = !root.open;
+            if root.collapsible {
+                root.open = !root.open;
+            } else {
+                root.switched(!root.on);
+            }
         }
     }
 
