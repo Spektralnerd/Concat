@@ -45,6 +45,9 @@ pub struct ExportSpec {
     /// An HDR timeline written as HDR, its own HLG or PQ, rather than
     /// tone-mapped to SDR. Nothing for an SDR timeline.
     pub hdr: bool,
+    /// Fork: what the sound is written in, and at what bitrate. AAC at
+    /// 192 kbps by default, what every export wrote before.
+    pub audio: concat_media::audio::AudioFormat,
 }
 
 /// One progress report: which frame of how many, in which stage.
@@ -102,6 +105,7 @@ pub fn request_for(
         hdr: spec.hdr,
         effect_time_offset: 0.0,
         canvas: video.canvas,
+        audio: spec.audio,
         clips,
     }
 }

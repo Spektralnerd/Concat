@@ -15,13 +15,14 @@
 
 use concat_host::export::{self, ExportSpec};
 use concat_media::ColorRange;
+use concat_media::audio::{AudioCodec, AudioFormat};
 
 use crate::format::{bytes, eta};
 use crate::host::{on_ui, spawn};
 use crate::i18n::{self, t, tf};
 use crate::panes::Msg;
 use crate::platform;
-use crate::studio::{AUDIO_BPS, EXPORT_CRF, EXPORT_SHORT_SIDES, RATES, Studio, home_folder};
+use crate::studio::{EXPORT_CRF, EXPORT_SHORT_SIDES, RATES, Studio, home_folder};
 use crate::ui::{ExportData, ExportPhase};
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -40,6 +41,10 @@ pub enum ExportMsg {
     HdrChanged(bool),
     /// The target bitrate field, in Mbps: the bitrate becomes a custom one.
     BitrateChanged(f32),
+    /// Fork: the sound's codec, as an index into `AudioCodec::ALL`.
+    AudioCodecChanged(i32),
+    /// Fork: the sound's bitrate field, in kbps.
+    AudioBitrateChanged(f32),
     /// Back to the form after a finished or failed render.
     Again,
     /// Pick the destination folder.
@@ -83,6 +88,10 @@ pub struct ExportPane {
     pub sdr: bool,
     /// The typed bitrate in kbps, the one written when `custom`.
     pub bitrate: u32,
+    /// Fork: the sound's codec, an index into `AudioCodec::ALL`, and its
+    /// bitrate in kbps for a lossy one.
+    pub audio_codec: usize,
+    pub audio_kbps: u32,
     pub phase: ExportPhase,
     pub progress: f32,
     pub stage: String,
@@ -113,6 +122,8 @@ impl Default for ExportPane {
             ten_bit: false,
             sdr: false,
             bitrate: 8000,
+            audio_codec: 0,
+            audio_kbps: AudioFormat::default().kbps,
             phase: ExportPhase::Idle,
             progress: 0.0,
             stage: String::new(),
@@ -159,6 +170,20 @@ impl ExportPane {
                 if mbps.is_finite() {
                     self.bitrate = ((mbps * 1000.0).round() as u32).clamp(500, 400_000);
                     self.custom = true;
+                }
+            }
+            // Fork: a codec this build cannot write, or the file cannot
+            // carry, is not taken; the picker says why under it.
+            ExportMsg::AudioCodecChanged(index) => {
+                let index = (index.max(0) as usize).min(AudioCodec::ALL.len() - 1);
+                let codec = AudioCodec::ALL[index];
+                if codec.encodable() && codec.fits(self.codec(studio).container()) {
+                    self.audio_codec = index;
+                }
+            }
+            ExportMsg::AudioBitrateChanged(kbps) => {
+                if kbps.is_finite() {
+                    self.audio_kbps = kbps.round().clamp(6.0, 512.0) as u32;
                 }
             }
             ExportMsg::Again => {
@@ -364,7 +389,20 @@ impl ExportPane {
     /// keeps to, so this is what is written, give or take.
     pub fn size_bytes(&self, studio: &Studio) -> f32 {
         let video = self.target_kbps(studio) as f32 * 1000.0;
-        (video + AUDIO_BPS) * studio.duration().max(1.0) / 8.0
+        let audio = self.audio(studio);
+        let sound = audio.codec.typical_kbps(audio.kbps) as f32 * 1000.0;
+        (video + sound) * studio.duration().max(1.0) / 8.0
+    }
+
+    /// Fork: what the sound is written in: the codec picked where the file
+    /// carries it - a WebM takes Opus alone, a ProRes .mov no Opus or FLAC -
+    /// at the bitrate typed.
+    pub fn audio(&self, studio: &Studio) -> AudioFormat {
+        let picked = AudioCodec::ALL[self.audio_codec.min(AudioCodec::ALL.len() - 1)];
+        AudioFormat {
+            codec: picked.or_for(self.codec(studio).container()),
+            kbps: self.audio_kbps,
+        }
     }
 
     /// The codec a sheet opens on follows the canvas (#456): a timeline
@@ -493,6 +531,7 @@ impl ExportPane {
             // Video range, what every player and every platform expects.
             color_range: ColorRange::Limited,
             hdr: self.hdr(studio),
+            audio: self.audio(studio),
         };
         // What the export's thread needs, taken here and nothing more: a
         // copy of the edit, its folder, the frame and the rate, and the
@@ -697,6 +736,72 @@ impl ExportPane {
             }
             .into(),
             size_chosen: bytes(self.size_bytes(studio)).into(),
+            audio_codec: {
+                let written = self.audio(studio).codec;
+                AudioCodec::ALL
+                    .iter()
+                    .position(|codec| *codec == written)
+                    .unwrap_or(0) as i32
+            },
+            audio_options: {
+                let labels: Vec<SharedString> = AudioCodec::ALL
+                    .iter()
+                    .map(|codec| codec.label().into())
+                    .collect();
+                ModelRc::new(VecModel::from(labels))
+            },
+            audio_details: {
+                let container = self.codec(studio).container();
+                let details: Vec<SharedString> = AudioCodec::ALL
+                    .iter()
+                    .map(|codec| {
+                        // Each key spelled out where it is used:
+                        // scripts/locales.py finds the strings the source
+                        // asks for by reading it.
+                        if !codec.encodable() {
+                            t("export.notOnThisDevice")
+                        } else if !codec.fits(container) {
+                            tf("export.audioNotIn", &[&format!(".{container}")])
+                        } else {
+                            match codec {
+                                AudioCodec::Aac => t("export.audioAac"),
+                                AudioCodec::Opus => t("export.audioOpus"),
+                                AudioCodec::Mp3 => t("export.audioMp3"),
+                                AudioCodec::Flac => t("export.audioFlac"),
+                                AudioCodec::Alac => t("export.audioAlac"),
+                                AudioCodec::Pcm => t("export.audioPcm"),
+                            }
+                        }
+                        .into()
+                    })
+                    .collect();
+                ModelRc::new(VecModel::from(details))
+            },
+            audio_lossy: self.audio(studio).codec.lossy(),
+            audio_kbps: {
+                let audio = self.audio(studio);
+                audio
+                    .bit_rate()
+                    .map_or(audio.kbps as f32, |bits| (bits / 1000) as f32)
+            },
+            audio_kbps_min: self
+                .audio(studio)
+                .codec
+                .kbps_range()
+                .map_or(0.0, |(low, _)| low as f32),
+            audio_kbps_max: self
+                .audio(studio)
+                .codec
+                .kbps_range()
+                .map_or(0.0, |(_, high)| high as f32),
+            audio_summary: {
+                let audio = self.audio(studio);
+                match audio.bit_rate() {
+                    Some(bits) => format!("{} · {} kbps", audio.codec.label(), bits / 1000),
+                    None => audio.codec.label().to_owned(),
+                }
+            }
+            .into(),
             phase: self.phase,
             progress: self.progress,
             stage: self.stage.as_str().into(),

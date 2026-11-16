@@ -1133,5 +1133,14 @@
   "cleanup.busy": "Gerade läuft ein Import. Räum auf, wenn er fertig ist.",
   "cleanup.done": "{0} Kopien gelöscht, {1} wieder frei.",
   "cleanup.doneOne": "Eine Kopie gelöscht, {0} wieder frei.",
-  "cleanup.failed": "{0} Kopien ließen sich nicht löschen, das Log sagt warum."
+  "cleanup.failed": "{0} Kopien ließen sich nicht löschen, das Log sagt warum.",
+  "export.audio": "Ton",
+  "export.audioBitrate": "Ton-Bitrate",
+  "export.audioAac": "Spielt überall",
+  "export.audioOpus": "Kleiner bei gleicher Qualität",
+  "export.audioMp3": "Das alte, spielt überall",
+  "export.audioFlac": "Verlustfrei",
+  "export.audioAlac": "Verlustfrei, für Apple",
+  "export.audioPcm": "Unkomprimiert, groß",
+  "export.audioNotIn": "Nicht in einer {0}-Datei"
 }

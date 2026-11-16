@@ -588,6 +588,7 @@ impl Studio {
             bitrate_kbps: 0,
             color_range: self.range,
             hdr: false,
+            audio: Default::default(),
         };
         let titles = self
             .titles
@@ -738,6 +739,7 @@ fn an_export_draws_on_a_lent_compositor() {
         bitrate_kbps: 0,
         color_range: concat_media::ColorRange::Limited,
         hdr: false,
+        audio: Default::default(),
     };
     let request = export::request(&studio.session, &spec, Vec::new());
     let written = export::run_on(
@@ -1306,6 +1308,7 @@ fn an_hlg_timeline_exports_as_hdr_or_sdr() {
             bitrate_kbps: 0,
             color_range: concat_media::ColorRange::Limited,
             hdr,
+            audio: Default::default(),
         };
         let request = export::request(&studio.session, &spec, Vec::new());
         export::run(&request, &AtomicBool::new(false), |_| {})

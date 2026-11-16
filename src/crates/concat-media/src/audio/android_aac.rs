@@ -21,7 +21,6 @@ use crate::error::{Error, Result};
 use crate::ffi;
 
 const CHANNELS: usize = 2;
-const BITRATE: i32 = 192_000;
 /// Samples per channel in one AAC frame, and so in each block fed.
 const FRAME: usize = 1024;
 /// MediaCodec's BUFFER_FLAG_CODEC_CONFIG and BUFFER_FLAG_END_OF_STREAM.
@@ -90,7 +89,8 @@ struct Aac {
 }
 
 impl Aac {
-    fn open(destination: &Path) -> Result<Self> {
+    /// Fork: at `bitrate` bits a second, the export's choice.
+    fn open(destination: &Path, bitrate: i32) -> Result<Self> {
         let fail = |detail: String| Error::Ffi {
             operation: "android aac encoder",
             path: destination.to_path_buf(),
@@ -105,7 +105,7 @@ impl Aac {
         format.set_str("mime", "audio/mp4a-latm");
         format.set_i32("sample-rate", MIX_RATE as i32);
         format.set_i32("channel-count", CHANNELS as i32);
-        format.set_i32("bitrate", BITRATE);
+        format.set_i32("bitrate", bitrate);
         // AAC-LC, the profile every player decodes.
         format.set_i32("aac-profile", 2);
         format.set_i32("max-input-size", (FRAME * CHANNELS * 2 * 4) as i32);
@@ -253,9 +253,11 @@ pub(super) fn mix(
     buses: &[AudioBus],
     duration: f64,
     destination: &Path,
+    bitrate: i64,
     progress: &mut dyn FnMut(f64) -> bool,
 ) -> Result<()> {
-    let mut aac = Aac::open(destination)?;
+    let bitrate = i32::try_from(bitrate).unwrap_or(192_000);
+    let mut aac = Aac::open(destination, bitrate)?;
     let mut output = ffmpeg::format::output(destination)
         .map_err(|error| ffi::fail("create", destination, error))?;
     {
@@ -273,7 +275,7 @@ pub(super) fn mix(
             (*parameters).codec_id = ffmpeg::codec::Id::AAC.into();
             (*parameters).sample_rate = MIX_RATE as i32;
             (*parameters).frame_size = FRAME as i32;
-            (*parameters).bit_rate = i64::from(BITRATE);
+            (*parameters).bit_rate = i64::from(bitrate);
             ffmpeg::sys::av_channel_layout_default(&mut (*parameters).ch_layout, CHANNELS as i32);
             let extradata = ffmpeg::sys::av_mallocz(
                 config.len() + ffmpeg::sys::AV_INPUT_BUFFER_PADDING_SIZE as usize,

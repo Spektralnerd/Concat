@@ -690,6 +690,204 @@ fn aac_encoder() -> Result<(&'static str, Sample)> {
     })
 }
 
+/// Fork: what an export's sound is written in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum AudioCodec {
+    /// AAC-LC, what every player plays. A phone's own encoder writes it.
+    #[default]
+    Aac,
+    /// Opus: the same sound in fewer bits. FFmpeg's own encoder on a
+    /// phone, libopus where it is linked.
+    Opus,
+    /// MP3, where LAME is linked: a desk's FFmpeg, not a phone's.
+    Mp3,
+    /// FLAC, lossless.
+    Flac,
+    /// Apple Lossless.
+    Alac,
+    /// Uncompressed, 16 bits a sample.
+    Pcm,
+}
+
+impl AudioCodec {
+    /// Every one, in the order a picker lists them.
+    pub const ALL: [AudioCodec; 6] = [
+        AudioCodec::Aac,
+        AudioCodec::Opus,
+        AudioCodec::Mp3,
+        AudioCodec::Flac,
+        AudioCodec::Alac,
+        AudioCodec::Pcm,
+    ];
+
+    /// Its name in a request: "aac", "opus", "mp3", "flac", "alac", "pcm".
+    pub fn name(self) -> &'static str {
+        match self {
+            AudioCodec::Aac => "aac",
+            AudioCodec::Opus => "opus",
+            AudioCodec::Mp3 => "mp3",
+            AudioCodec::Flac => "flac",
+            AudioCodec::Alac => "alac",
+            AudioCodec::Pcm => "pcm",
+        }
+    }
+
+    /// The codec a request's name names, if any.
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|codec| codec.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// How a person says it.
+    pub fn label(self) -> &'static str {
+        match self {
+            AudioCodec::Aac => "AAC",
+            AudioCodec::Opus => "Opus",
+            AudioCodec::Mp3 => "MP3",
+            AudioCodec::Flac => "FLAC",
+            AudioCodec::Alac => "ALAC",
+            AudioCodec::Pcm => "PCM",
+        }
+    }
+
+    /// Whether it throws sound away to be small, and so has a bitrate.
+    pub fn lossy(self) -> bool {
+        matches!(self, AudioCodec::Aac | AudioCodec::Opus | AudioCodec::Mp3)
+    }
+
+    /// The bitrates, in kbps, its encoders take for stereo; none for a
+    /// lossless codec. AAC's top is what an AAC frame holds at 48 kHz in
+    /// two channels, Opus's the format's own, MP3's the format's own.
+    pub fn kbps_range(self) -> Option<(u32, u32)> {
+        match self {
+            AudioCodec::Aac => Some((32, 512)),
+            AudioCodec::Opus => Some((6, 510)),
+            AudioCodec::Mp3 => Some((32, 320)),
+            _ => None,
+        }
+    }
+
+    /// About what a second of it comes to, in kbps, for the size a sheet
+    /// promises: the bitrate asked of a lossy codec; for a lossless one
+    /// what music usually packs to, and PCM's own 1536.
+    pub fn typical_kbps(self, asked: u32) -> u32 {
+        match self {
+            AudioCodec::Flac | AudioCodec::Alac => 900,
+            AudioCodec::Pcm => 1536,
+            _ => match self.kbps_range() {
+                Some((low, high)) => asked.clamp(low, high),
+                None => asked,
+            },
+        }
+    }
+
+    /// Whether a file with this extension carries it: a WebM takes Opus
+    /// alone, a QuickTime file neither Opus nor FLAC, which FFmpeg puts
+    /// only in an MP4; an MP4 takes them all.
+    pub fn fits(self, container: &str) -> bool {
+        match container {
+            "webm" => self == AudioCodec::Opus,
+            "mov" => !matches!(self, AudioCodec::Opus | AudioCodec::Flac),
+            _ => true,
+        }
+    }
+
+    /// What a file with this extension is written with when this codec
+    /// does not go in it: Opus in a WebM, AAC elsewhere.
+    pub fn or_for(self, container: &str) -> Self {
+        if self.fits(container) {
+            self
+        } else if container == "webm" {
+            AudioCodec::Opus
+        } else {
+            AudioCodec::Aac
+        }
+    }
+
+    /// Whether this build has an encoder for it: a phone has Android's AAC
+    /// and FFmpeg's own Opus, FLAC, ALAC and PCM; MP3 takes LAME, which only
+    /// a desk's FFmpeg links.
+    pub fn encodable(self) -> bool {
+        ffi::init();
+        if self == AudioCodec::Aac && cfg!(target_os = "android") {
+            return true;
+        }
+        encoder_for(self).is_ok()
+    }
+}
+
+/// Fork: what an export's sound is written in, and at what bitrate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioFormat {
+    /// The codec.
+    pub codec: AudioCodec,
+    /// The bitrate in kbps, for a lossy codec; kept to the codec's range
+    /// when written (see [`AudioCodec::kbps_range`]).
+    pub kbps: u32,
+}
+
+impl Default for AudioFormat {
+    /// AAC at 192 kbps, what every export wrote before there was a choice.
+    fn default() -> Self {
+        AudioFormat {
+            codec: AudioCodec::Aac,
+            kbps: 192,
+        }
+    }
+}
+
+impl AudioFormat {
+    /// The bitrate its encoder is asked for, in bits a second: the one
+    /// asked, kept to the codec's range; none for a lossless codec.
+    pub fn bit_rate(self) -> Option<i64> {
+        let (low, high) = self.codec.kbps_range()?;
+        Some(i64::from(self.kbps.clamp(low, high)) * 1000)
+    }
+
+    /// The format a destination's extension has always meant: 16-bit PCM
+    /// for a `.wav`, Opus for a `.webm`, `.opus`, `.ogg` or `.mka`, AAC
+    /// otherwise, at 192 kbps.
+    fn for_destination(destination: &Path) -> Self {
+        let extension = destination
+            .extension()
+            .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
+        let codec = match extension.as_deref() {
+            Some("wav") => AudioCodec::Pcm,
+            Some("webm" | "opus" | "ogg" | "mka") => AudioCodec::Opus,
+            _ => AudioCodec::Aac,
+        };
+        AudioFormat {
+            codec,
+            ..AudioFormat::default()
+        }
+    }
+}
+
+/// Fork: the FFmpeg encoder for `codec` and the samples it takes.
+fn encoder_for(codec: AudioCodec) -> Result<(&'static str, Sample)> {
+    use ffmpeg::util::format::sample::Type;
+    let named = |name: &'static str, format: Sample| {
+        if encoder::find_by_name(name).is_some() {
+            Ok((name, format))
+        } else {
+            Err(Error::Missing {
+                what: "encoder",
+                name: name.to_owned(),
+            })
+        }
+    };
+    match codec {
+        AudioCodec::Aac => aac_encoder(),
+        AudioCodec::Opus => opus_encoder(),
+        AudioCodec::Mp3 => named("libmp3lame", Sample::F32(Type::Planar)),
+        AudioCodec::Flac => named("flac", Sample::I16(Type::Packed)),
+        AudioCodec::Alac => named("alac", Sample::I16(Type::Planar)),
+        AudioCodec::Pcm => named("pcm_s16le", Sample::I16(Type::Packed)),
+    }
+}
+
 /// Mixes `clips` into one audio file at `destination`: 16-bit PCM for a
 /// `.wav` destination (case-insensitive), Opus for a `.webm`, `.opus`,
 /// `.ogg` or `.mka` one, AAC otherwise, at 48 kHz stereo.
@@ -721,33 +919,22 @@ pub fn mix_to_file_reporting(
     destination: &Path,
     progress: &mut dyn FnMut(f64) -> bool,
 ) -> Result<()> {
-    let extension = destination
-        .extension()
-        .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
-    let wav = extension.as_deref() == Some("wav");
-    let opus = matches!(extension.as_deref(), Some("webm" | "opus" | "ogg" | "mka"));
+    let format = AudioFormat::for_destination(destination);
+    mix_to_file_as(clips, buses, duration, destination, format, progress)
+}
+
+/// Fork: [`mix_to_file_reporting`] in the format asked rather than the one
+/// the destination's extension means. The destination's container must
+/// carry the codec (see [`AudioCodec::fits`]).
+pub fn mix_to_file_as(
+    clips: &[AudioClip],
+    buses: &[AudioBus],
+    duration: f64,
+    destination: &Path,
+    format: AudioFormat,
+    progress: &mut dyn FnMut(f64) -> bool,
+) -> Result<()> {
     ffi::init();
-    #[cfg(target_os = "android")]
-    if !wav && !opus {
-        for chain in clips
-            .iter()
-            .map(|clip| &clip.filter_chain)
-            .chain(buses.iter().map(|bus| &bus.filter_chain))
-        {
-            validate_chain(chain)?;
-        }
-        return android_aac::mix(clips, buses, duration, destination, progress);
-    }
-    let (codec_name, mix_format) = if wav {
-        (
-            "pcm_s16le",
-            Sample::I16(ffmpeg::util::format::sample::Type::Packed),
-        )
-    } else if opus {
-        opus_encoder()?
-    } else {
-        aac_encoder()?
-    };
     // A bad chain is refused before any file is opened.
     for chain in clips
         .iter()
@@ -756,6 +943,13 @@ pub fn mix_to_file_reporting(
     {
         validate_chain(chain)?;
     }
+    #[cfg(target_os = "android")]
+    if format.codec == AudioCodec::Aac {
+        let bits = format.bit_rate().unwrap_or(192_000);
+        return android_aac::mix(clips, buses, duration, destination, bits, progress);
+    }
+    let (codec_name, mix_format) = encoder_for(format.codec)?;
+    let pcm = format.codec == AudioCodec::Pcm;
 
     // The encoder, and the file it writes into.
     let codec = encoder::find_by_name(codec_name).ok_or_else(|| Error::Missing {
@@ -775,8 +969,14 @@ pub fn mix_to_file_reporting(
     audio.set_rate(MIX_RATE as i32);
     audio.set_format(mix_format);
     audio.set_ch_layout(ChannelLayout::STEREO);
-    if !wav {
-        audio.set_bit_rate(192_000);
+    if let Some(bits) = format.bit_rate() {
+        // Apple's AAC encoder takes no more than 320 kbps in stereo.
+        let bits = if codec_name == "aac_at" {
+            bits.min(320_000)
+        } else {
+            bits
+        };
+        audio.set_bit_rate(bits as usize);
     }
     audio.set_time_base(ffmpeg::Rational::new(1, MIX_RATE as i32));
     if global_header {
@@ -793,10 +993,10 @@ pub fn mix_to_file_reporting(
         .map_err(|error| ffi::fail_said("open encoder", destination, error))?;
     // PCM accepts variable-size frames. Use blocks rather than one sample
     // per packet; run_mix keeps the final block's exact sample count.
-    let frame_size = if wav {
-        1024
-    } else {
-        encoder.frame_size().max(1)
+    let frame_size = match encoder.frame_size() {
+        0 => 1024,
+        _ if pcm => 1024,
+        size => size,
     };
     {
         let mut stream = output
@@ -2119,6 +2319,159 @@ mod tests {
             }
             assert!(audible);
         }
+        std::fs::remove_dir_all(dir).expect("removes test files");
+    }
+
+    /// Fork: every audio codec this build writes goes into every container
+    /// that carries it, the export's way - the mix into a file of its own,
+    /// then the mux beside the picture - and comes out as that codec, the
+    /// sound in it, the length of the timeline.
+    #[test]
+    fn every_audio_codec_mixes_and_muxes_where_it_fits() {
+        use crate::{AudioDecoder, AudioOptions, EncodeOptions, Encoder, FrameSink, VideoCodec};
+        use concat_core::frame::Frame;
+        use concat_core::time::FrameRate;
+
+        let dir = std::env::temp_dir().join(format!("concat-audio-codecs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("creates a folder");
+        let tone = dir.join("tone.wav");
+        tone_wav(&tone, 1.0);
+        let piece = AudioClip {
+            path: tone,
+            duration: 1.0,
+            ..clip("")
+        };
+        let mut written = Vec::new();
+        for container in ["mp4", "mov"] {
+            let video = dir.join(format!("picture.{container}"));
+            let options = EncodeOptions {
+                codec: VideoCodec::H264,
+                preset: "ultrafast".to_owned(),
+                hardware: false,
+                ..EncodeOptions::default()
+            };
+            let mut encoder =
+                Encoder::create(&video, 64, 64, FrameRate::THIRTY, &options).expect("opens");
+            let frame = Frame::transparent(64, 64);
+            for _ in 0..30 {
+                encoder.write_frame(&frame).expect("writes");
+            }
+            encoder.finish().expect("finishes");
+
+            for codec in AudioCodec::ALL {
+                if !codec.fits(container) {
+                    continue;
+                }
+                if !codec.encodable() {
+                    eprintln!("{} not in the linked FFmpeg; skipped", codec.label());
+                    continue;
+                }
+                let own = if codec == AudioCodec::Aac {
+                    "m4a"
+                } else {
+                    container
+                };
+                let sound = dir.join(format!("sound-{}.{own}", codec.name()));
+                let format = AudioFormat { codec, kbps: 128 };
+                mix_to_file_as(&[piece.clone()], &[], 1.0, &sound, format, &mut |_| true)
+                    .unwrap_or_else(|error| panic!("{} mixes: {error}", codec.label()));
+                let output = dir.join(format!("out-{}.{container}", codec.name()));
+                mux(&video, &sound, &output)
+                    .unwrap_or_else(|error| panic!("{} in a .{container}: {error}", codec.label()));
+
+                let id = {
+                    let input = ffmpeg::format::input(&output).expect("opens the file");
+                    let stream = input
+                        .streams()
+                        .best(ffmpeg::media::Type::Audio)
+                        .expect("has sound");
+                    stream.parameters().id()
+                };
+                let expected = match codec {
+                    AudioCodec::Aac => vec![ffmpeg::codec::Id::AAC],
+                    AudioCodec::Opus => vec![ffmpeg::codec::Id::OPUS],
+                    AudioCodec::Mp3 => vec![ffmpeg::codec::Id::MP3],
+                    AudioCodec::Flac => vec![ffmpeg::codec::Id::FLAC],
+                    AudioCodec::Alac => vec![ffmpeg::codec::Id::ALAC],
+                    AudioCodec::Pcm => {
+                        vec![ffmpeg::codec::Id::PCM_S16LE, ffmpeg::codec::Id::PCM_S16BE]
+                    }
+                };
+                assert!(
+                    expected.contains(&id),
+                    "{} in a .{container} reads back as {id:?}",
+                    codec.label()
+                );
+                let mut decoder =
+                    AudioDecoder::open(&output, &AudioOptions::default()).expect("opens the sound");
+                let mut audible = false;
+                let mut samples = 0usize;
+                while let Some(block) = decoder.next_i16().expect("decodes") {
+                    audible |= block.iter().any(|sample| i32::from(*sample).abs() > 1000);
+                    samples += block.len();
+                }
+                assert!(
+                    audible,
+                    "{} in a .{container}: the tone is heard",
+                    codec.label()
+                );
+                assert!(samples > 0, "{} in a .{container}: sound", codec.label());
+                written.push(format!("{}.{container}", codec.name()));
+            }
+        }
+        eprintln!("written: {written:?}");
+        assert!(
+            written.len() >= 6,
+            "at least AAC, FLAC and PCM in both: {written:?}"
+        );
+        std::fs::remove_dir_all(dir).expect("removes test files");
+    }
+
+    /// Fork: the bitrate asked is the bitrate written - a lossy codec's
+    /// file is bigger at 256 kbps than at 64 - and is kept to the codec's
+    /// range.
+    #[test]
+    fn the_bitrate_asked_is_the_bitrate_written() {
+        let dir = std::env::temp_dir().join(format!("concat-audio-kbps-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("creates a folder");
+        let tone = dir.join("tone.wav");
+        tone_wav(&tone, 2.0);
+        let piece = AudioClip {
+            path: tone,
+            duration: 2.0,
+            ..clip("")
+        };
+        let size = |kbps: u32| {
+            let sound = dir.join(format!("aac-{kbps}.m4a"));
+            let format = AudioFormat {
+                codec: AudioCodec::Aac,
+                kbps,
+            };
+            mix_to_file_as(&[piece.clone()], &[], 2.0, &sound, format, &mut |_| true)
+                .expect("mixes");
+            std::fs::metadata(&sound).expect("written").len()
+        };
+        let (small, big) = (size(64), size(256));
+        assert!(
+            big > small * 2,
+            "64 kbps: {small} bytes, 256 kbps: {big} bytes"
+        );
+        assert_eq!(
+            AudioFormat {
+                codec: AudioCodec::Mp3,
+                kbps: 999
+            }
+            .bit_rate(),
+            Some(320_000)
+        );
+        assert_eq!(
+            AudioFormat {
+                codec: AudioCodec::Flac,
+                kbps: 192
+            }
+            .bit_rate(),
+            None
+        );
         std::fs::remove_dir_all(dir).expect("removes test files");
     }
 

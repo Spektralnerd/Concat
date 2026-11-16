@@ -43,7 +43,7 @@ use concat_core::shader::{RevealMap, ShaderPass};
 use concat_core::time::{FrameRate, Rational};
 use concat_core::timeline::{Clip, ClipId, MediaRef, Timeline, Track, TrackKind, Transform};
 use concat_effects::Catalogue;
-use concat_media::audio::{self, AudioClip};
+use concat_media::audio::{self, AudioClip, AudioCodec, AudioFormat};
 use concat_media::{DecodeOptions, EncodeOptions, Encoder, FrameSink, RateMode, VideoCodec};
 use concat_project::model::{AppliedFilter, ColorSpace, Cutout, Mask};
 use concat_render::{
@@ -559,6 +559,12 @@ pub struct ExportRequest {
         deserialize_with = "concat_project::model::rgba_array"
     )]
     pub canvas: [u8; 4],
+    /// Fork: what the sound is written in - `{"codec": "opus", "kbps":
+    /// 160}`, the codec named as [`AudioCodec::name`] names it - and AAC at
+    /// 192 kbps when a request does not say. A codec the container does not
+    /// carry is written as one it does (see [`AudioCodec::or_for`]).
+    #[serde(default, deserialize_with = "audio_by_name")]
+    pub audio: AudioFormat,
     /// The flattened clip list to render.
     pub clips: Vec<ExportClip>,
 }
@@ -595,6 +601,32 @@ fn codec_by_name<'de, D: serde::Deserializer<'de>>(
         serde::de::Error::custom(format!(
             "unknown codec {name:?}: h264, hevc, av1, prores-4444 or vp9-alpha"
         ))
+    })
+}
+
+/// Fork: an audio format named the way [`AudioCodec::name`] names its
+/// codec, refusing a name the engine has no encoder for rather than
+/// quietly writing AAC.
+fn audio_by_name<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<AudioFormat, D::Error> {
+    #[derive(Deserialize)]
+    struct Wire {
+        codec: Option<String>,
+        kbps: Option<u32>,
+    }
+    let wire = Wire::deserialize(deserializer)?;
+    let codec = match wire.codec {
+        Some(name) => AudioCodec::parse(&name).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unknown audio codec {name:?}: aac, opus, mp3, flac, alac or pcm"
+            ))
+        })?,
+        None => AudioCodec::default(),
+    };
+    Ok(AudioFormat {
+        codec,
+        kbps: wire.kbps.unwrap_or(AudioFormat::default().kbps),
     })
 }
 
@@ -1174,7 +1206,27 @@ pub fn render_on(
     // WebM's sound is Opus, the one a WebM takes besides Vorbis. A .mov
     // takes the AAC an MP4 does.
     let container = request.codec.container();
-    let sound_container = if container == "webm" { "webm" } else { "m4a" };
+    // Fork: the sound in the format asked, where the container carries it,
+    // in a file of its own that the container's muxer writes too - an
+    // m4a for AAC as ever, the container's own kind for the rest.
+    let sound_format = AudioFormat {
+        codec: request.audio.codec.or_for(container),
+        ..request.audio
+    };
+    if sound_format.codec != request.audio.codec {
+        log::info!(
+            "export: a .{container} carries no {}; its sound is {}",
+            request.audio.codec.label(),
+            sound_format.codec.label()
+        );
+    }
+    let sound_container = if container == "webm" {
+        "webm"
+    } else if sound_format.codec == AudioCodec::Aac {
+        "m4a"
+    } else {
+        container
+    };
     let silent = directory.join(format!(".{stem}.concat-video.{container}"));
     let mixed = directory.join(format!(".{stem}.concat-audio.{sound_container}"));
     let muxed = directory.join(format!(".{stem}.concat-muxed.{container}"));
@@ -1219,11 +1271,12 @@ pub fn render_on(
             // Fork: the bar moves with the mix, a hundred steps at most, and
             // Cancel stops it where it is rather than after it.
             let mut shown = 0;
-            audio::mix_to_file_reporting(
+            audio::mix_to_file_as(
                 &mix,
                 &buses,
                 timeline_end.as_f64(),
                 &mixed,
+                sound_format,
                 &mut |fraction| {
                     let frame = (fraction * total_frames as f64) as i64;
                     let percent = (fraction * 100.0) as i64;
@@ -3304,6 +3357,7 @@ pub fn preview_plan(
         effect_time_offset: 0.0,
         canvas,
         clips: Vec::new(),
+        audio: Default::default(),
     };
     PreviewPlan {
         built: build_timeline(&shim, rate, &visible, transitions),
@@ -4587,6 +4641,7 @@ mod tests {
             hdr: false,
             effect_time_offset: 0.0,
             clips: vec![footage],
+            audio: Default::default(),
         };
         assert!(!nested.exists());
         let cancel = AtomicBool::new(false);
@@ -4669,6 +4724,7 @@ mod tests {
             hdr: false,
             effect_time_offset: 0.0,
             clips: vec![footage],
+            audio: Default::default(),
         };
         let cancel = AtomicBool::new(false);
         let mut progress = |_: i64, _: i64, _: &'static str| {};
@@ -4772,6 +4828,7 @@ mod tests {
             hdr: false,
             effect_time_offset: 0.0,
             clips: vec![footage.clone(), sound.clone()],
+            audio: Default::default(),
         };
         let render = |request: &ExportRequest| {
             let cancel = AtomicBool::new(false);
@@ -5226,6 +5283,7 @@ mod tests {
             hdr: false,
             effect_time_offset: 0.0,
             clips: pictures.into_iter().chain([sound]).collect(),
+            audio: Default::default(),
         };
         let cancel = AtomicBool::new(false);
         let mut progress = |_: i64, _: i64, _: &'static str| {};

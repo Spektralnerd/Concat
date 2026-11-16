@@ -1125,5 +1125,14 @@
   "cleanup.busy": "An import is under way. Free up space once it is done.",
   "cleanup.done": "Deleted {0} copies, {1} free again.",
   "cleanup.doneOne": "Deleted one copy, {0} free again.",
-  "cleanup.failed": "{0} copies could not be deleted; the log says why."
+  "cleanup.failed": "{0} copies could not be deleted; the log says why.",
+  "export.audio": "Audio",
+  "export.audioBitrate": "Audio bitrate",
+  "export.audioAac": "Plays everywhere",
+  "export.audioOpus": "Smaller at the same quality",
+  "export.audioMp3": "The old one, plays everywhere",
+  "export.audioFlac": "Lossless",
+  "export.audioAlac": "Lossless, for Apple",
+  "export.audioPcm": "Uncompressed, large",
+  "export.audioNotIn": "Not in a {0} file"
 }

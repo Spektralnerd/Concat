@@ -2275,6 +2275,12 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_export_ten_bit_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Export(ExportMsg::TenBitChanged(on)));
     }));
+    app.on_export_audio_codec_changed(on_window!(|state, index: i32| {
+        state.handle(Msg::Export(ExportMsg::AudioCodecChanged(index)));
+    }));
+    app.on_export_audio_bitrate_changed(on_window!(|state, kbps: f32| {
+        state.handle(Msg::Export(ExportMsg::AudioBitrateChanged(kbps)));
+    }));
     app.on_export_bitrate_changed(on_window!(|state, mbps: f32| {
         state.handle(Msg::Export(ExportMsg::BitrateChanged(mbps)));
     }));

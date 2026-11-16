@@ -260,7 +260,6 @@ pub const COMPACT_WIDTH: f32 = 860.0;
 /// The quality an export's encoder falls back on were it given no
 /// bitrate: the export sheet always gives one.
 pub(crate) const EXPORT_CRF: u8 = 20;
-pub(crate) const AUDIO_BPS: f32 = 192_000.0;
 
 /// The frame shapes the launch screen offers, as the ratio behind each
 /// label: width over height.

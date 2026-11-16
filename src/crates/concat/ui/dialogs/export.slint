@@ -81,6 +81,21 @@ export struct ExportData {
     encoding: string,
     /// What the file will weigh at the bitrate.
     size-chosen: string,
+    /// Fork: the sound's codec, as an index into `audio-options`: AAC,
+    /// Opus, MP3, FLAC, ALAC, PCM - the one written, where the container
+    /// carries the one picked.
+    audio-codec: int,
+    audio-options: [string],
+    /// Under each: what it is good for, or why it cannot be had here.
+    audio-details: [string],
+    /// The codec has a bitrate: AAC, Opus and MP3 do, the lossless none.
+    audio-lossy: bool,
+    /// The sound's bitrate in kbps, and the codec's range.
+    audio-kbps: float,
+    audio-kbps-min: float,
+    audio-kbps-max: float,
+    /// "AAC · 192 kbps" or "FLAC": the summary's line for the sound.
+    audio-summary: string,
     phase: ExportPhase,
     /// 0..1
     progress: float,
@@ -252,6 +267,7 @@ component SummarySection inherits DialogSection {
             spacing: 1px;
 
             Fact { label: I18n.t("export.format"); value: root.data.format + " · " + root.data.encoding; }
+            Fact { label: I18n.t("export.audio"); value: root.data.audio-summary; }
             Fact { label: I18n.t("common.duration"); value: root.data.duration; }
             Fact { label: I18n.t("export.contents"); value: root.data.contents; }
         }
@@ -302,6 +318,8 @@ component OutputSection inherits DialogSection {
     callback codec-changed(index: int);
     callback ten-bit-changed(on: bool);
     callback hdr-changed(on: bool);
+    callback audio-codec-changed(index: int);
+    callback audio-bitrate-changed(kbps: float);
 
     title: I18n.t("export.output");
 
@@ -421,6 +439,36 @@ component OutputSection inherits DialogSection {
                     checked: root.data.ten-bit;
                     toggled(on) => { root.ten-bit-changed(on); }
                 }
+            }
+        }
+    }
+
+    // Fork: the sound - its codec, and for a lossy one its bitrate, typed,
+    // stepped or dragged within what the codec takes.
+    DialogRow {
+        label: I18n.t("export.audio");
+        Select {
+            current: root.data.audio-codec;
+            options: root.data.audio-options;
+            details: root.data.audio-details;
+            changed(index) => { root.audio-codec-changed(index); }
+        }
+    }
+
+    if root.data.audio-lossy: DialogRow {
+        label: I18n.t("export.audioBitrate");
+        HorizontalLayout {
+            alignment: end;
+            NumberField {
+                width: 120px;
+                value: root.data.audio-kbps;
+                minimum: root.data.audio-kbps-min;
+                maximum: root.data.audio-kbps-max;
+                step: 8;
+                precision: 0;
+                px-per-step: 4px;
+                unit: "kbps";
+                changed(value) => { root.audio-bitrate-changed(value); }
             }
         }
     }
@@ -607,6 +655,8 @@ export component ExportDialog inherits Rectangle {
     callback ten-bit-changed(on: bool);
     callback hdr-changed(on: bool);
     callback bitrate-changed(mbps: float);
+    callback audio-codec-changed(index: int);
+    callback audio-bitrate-changed(kbps: float);
     callback begin();
     callback cancel();
     callback reveal();
@@ -743,6 +793,10 @@ export component ExportDialog inherits Rectangle {
                             codec-changed(index) => { root.codec-changed(index); }
                             ten-bit-changed(on) => { root.ten-bit-changed(on); }
                             hdr-changed(on) => { root.hdr-changed(on); }
+
+                            audio-codec-changed(index) => { root.audio-codec-changed(index); }
+
+                            audio-bitrate-changed(kbps) => { root.audio-bitrate-changed(kbps); }
                         }
                     }
 
@@ -783,6 +837,10 @@ export component ExportDialog inherits Rectangle {
                                 codec-changed(index) => { root.codec-changed(index); }
                                 ten-bit-changed(on) => { root.ten-bit-changed(on); }
                                 hdr-changed(on) => { root.hdr-changed(on); }
+
+                                audio-codec-changed(index) => { root.audio-codec-changed(index); }
+
+                                audio-bitrate-changed(kbps) => { root.audio-bitrate-changed(kbps); }
                             }
                         }
                     }
@@ -818,6 +876,10 @@ export component ExportDialog inherits Rectangle {
                                 codec-changed(index) => { root.codec-changed(index); }
                                 ten-bit-changed(on) => { root.ten-bit-changed(on); }
                                 hdr-changed(on) => { root.hdr-changed(on); }
+
+                                audio-codec-changed(index) => { root.audio-codec-changed(index); }
+
+                                audio-bitrate-changed(kbps) => { root.audio-bitrate-changed(kbps); }
                             }
                         }
 

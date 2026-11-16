@@ -424,6 +424,7 @@ fn an_ordinary_project_exports_at_speed() {
         bitrate_kbps: 0,
         color_range: concat_media::ColorRange::Limited,
         hdr: false,
+        audio: Default::default(),
     };
     let request = export::request(&studio.session, &spec, title_clips);
     let begun = std::time::Instant::now();

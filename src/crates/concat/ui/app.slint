@@ -389,6 +389,8 @@ export component App inherits Window {
     callback export-ten-bit-changed(on: bool);
     callback export-hdr-changed(on: bool);
     callback export-bitrate-changed(mbps: float);
+    callback export-audio-codec-changed(index: int);
+    callback export-audio-bitrate-changed(kbps: float);
     callback export-start();
     callback export-cancel();
     callback export-reveal();
@@ -1016,6 +1018,8 @@ export component App inherits Window {
         ten-bit-changed(on) => { root.export-ten-bit-changed(on); }
         hdr-changed(on) => { root.export-hdr-changed(on); }
         bitrate-changed(mbps) => { root.export-bitrate-changed(mbps); }
+        audio-codec-changed(index) => { root.export-audio-codec-changed(index); }
+        audio-bitrate-changed(kbps) => { root.export-audio-bitrate-changed(kbps); }
         begin => { root.export-start(); }
         cancel => { root.export-cancel(); }
         reveal => { root.export-reveal(); }
