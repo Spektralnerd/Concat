@@ -249,8 +249,11 @@ jobs:
       # keytool lists), and the key's password (ANDROID_KEY_PASSWORD, or
       # the keystore's, which is what a key made with the keystore has).
       # A prompt on a runner is a step that waits for its timeout.
+      # Fork: a build started by hand is signed with the fork's key too,
+      # when ANDROID_KEYSTORE is set, so each one installs over the last
+      # without the app (and its projects) being uninstalled first.
       - name: Sign with the repository's key
-        if: inputs.sign && matrix.ship
+        if: matrix.ship && (inputs.sign || github.event_name == 'workflow_dispatch')
         timeout-minutes: 10
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
@@ -666,10 +669,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN: ${{ inputs.reuse_run || github.run_id }}
+          FIXED_KEY: ${{ secrets.ANDROID_KEYSTORE != '' }}
         run: |
           set -euo pipefail
           ls -l apk
+          key="dem Schlüssel dieses Laufs (vor dem Installieren die alte Version deinstallieren)"
+          if [ "$FIXED_KEY" = "true" ]; then
+            key="dem festen Schlüssel des Forks (installiert sich über die vorige Version)"
+          fi
           gh release create "fork-apk-run-$SOURCE_RUN" apk/*.apk \
             --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
             --title "Concat arm64 (Fork-Build, Lauf $SOURCE_RUN)" \
-            --notes "arm64-APK aus Lauf $SOURCE_RUN, signiert mit dem Schlüssel dieses Laufs."
+            --notes "arm64-APK aus Lauf $SOURCE_RUN, signiert mit $key."
