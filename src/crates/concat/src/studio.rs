@@ -57,6 +57,7 @@ mod chains;
 mod copy_tests;
 mod edit;
 mod gestures;
+mod imports;
 mod inspector;
 mod keyboard;
 mod keyframes;
@@ -2848,6 +2849,12 @@ pub enum Confirm {
     /// with its log to share (#560).
     #[cfg(target_os = "android")]
     LastRunClosed,
+    /// Fork: deleting the phone's copies of picked files that no project
+    /// uses any more - these, of `bytes` together.
+    DeleteLeftovers {
+        files: Vec<std::path::PathBuf>,
+        bytes: u64,
+    },
 }
 
 /// One clip on the clipboard: the clip as it was when copied, the row of

@@ -1125,5 +1125,13 @@
   "mediaPane.removedUnusedOne": "Eine unbenutzte Datei entfernt.",
   "mediaPane.removedUnusedMany": "{0} unbenutzte Dateien entfernt.",
   "mediaPane.removedWithClip": "Aus dem Projekt entfernt, samt einem Clip in der Timeline. Rückgängig holt ihn zurück.",
-  "mediaPane.removedWithClips": "Aus dem Projekt entfernt, samt {0} Clips in der Timeline. Rückgängig holt sie zurück."
+  "mediaPane.removedWithClips": "Aus dem Projekt entfernt, samt {0} Clips in der Timeline. Rückgängig holt sie zurück.",
+  "cleanup.title": "Speicher aufräumen",
+  "cleanup.ask": "{0} Kopien, die Concat von gewählten Dateien angelegt hat, nutzt kein Projekt mehr, zusammen {1}. Löschen? Das lässt sich nicht rückgängig machen, auch Rückgängig holt eine entfernte Datei danach nicht mehr zurück.",
+  "cleanup.askOne": "Eine Kopie, die Concat von einer gewählten Datei angelegt hat, nutzt kein Projekt mehr ({0}). Löschen? Das lässt sich nicht rückgängig machen, auch Rückgängig holt die entfernte Datei danach nicht mehr zurück.",
+  "cleanup.nothing": "Nichts aufzuräumen: Jede Kopie, die Concat aufbewahrt, gehört zu einem Projekt.",
+  "cleanup.busy": "Gerade läuft ein Import. Räum auf, wenn er fertig ist.",
+  "cleanup.done": "{0} Kopien gelöscht, {1} wieder frei.",
+  "cleanup.doneOne": "Eine Kopie gelöscht, {0} wieder frei.",
+  "cleanup.failed": "{0} Kopien ließen sich nicht löschen, das Log sagt warum."
 }

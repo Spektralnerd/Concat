@@ -1268,6 +1268,13 @@ export component PhoneEditor inherits Rectangle {
                 label: I18n.t1("mediaPane.removeUnused", Editor.media-unused-count);
                 clicked => { Editor.media-remove-unused(); }
             }
+            // Fork: the copies Concat keeps of picked files that no project
+            // uses any more; asked about before anything is deleted.
+            SheetButton {
+                glyph: Glyph.sparkle;
+                label: I18n.t("cleanup.title");
+                clicked => { Editor.imports-clean-up(); }
+            }
             // Room under the last row for the Add bar over it.
             if Editor.media-selected-count > 0: Rectangle {
                 height: root.add-bar-h - 12px;

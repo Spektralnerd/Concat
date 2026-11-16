@@ -142,6 +142,18 @@ pub(crate) fn job_note(title: String, detail: String) {
     });
 }
 
+/// Fork: whether a copy into the app or a project ZIP is under way: the
+/// files it is writing are no project's yet, and a clean-up must wait.
+pub(crate) fn busy() -> bool {
+    JOB.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .is_some()
+        || STARTED
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_some()
+}
+
 /// Takes the card down after a project ZIP, and lets the next one start.
 /// From any thread.
 pub(crate) fn job_finished() {

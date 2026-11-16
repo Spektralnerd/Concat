@@ -102,6 +102,9 @@ export global Editor {
     callback media-remove-selected();
     /// Fork: every file nothing in the project uses leaves the bin.
     callback media-remove-unused();
+    /// Fork: the phone's copies of picked files that no project uses any
+    /// more are looked for, and deleted once that is confirmed.
+    callback imports-clean-up();
     callback media-activate(id: int);
     /// The phone's Add: what is picked, in the order it was picked, onto
     /// the main lane at the playhead - or after its last clip, `at-end`.

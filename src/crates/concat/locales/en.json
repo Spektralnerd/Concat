@@ -1144,5 +1144,13 @@
   "mediaPane.removedUnusedOne": "Removed one file nothing used.",
   "mediaPane.removedUnusedMany": "Removed {0} files nothing used.",
   "mediaPane.removedWithClip": "Removed from the project, along with a clip on the timeline. Undo brings it back.",
-  "mediaPane.removedWithClips": "Removed from the project, along with {0} clips on the timeline. Undo brings them back."
+  "mediaPane.removedWithClips": "Removed from the project, along with {0} clips on the timeline. Undo brings them back.",
+  "cleanup.title": "Free up space",
+  "cleanup.ask": "No project uses {0} of the copies Concat keeps of picked files, {1} together. Delete them? This cannot be undone, and Undo cannot bring a removed file back afterwards.",
+  "cleanup.askOne": "No project uses one of the copies Concat keeps of picked files ({0}). Delete it? This cannot be undone, and Undo cannot bring a removed file back afterwards.",
+  "cleanup.nothing": "Nothing to free up: every copy Concat keeps belongs to a project.",
+  "cleanup.busy": "An import is under way. Free up space once it is done.",
+  "cleanup.done": "Deleted {0} copies, {1} free again.",
+  "cleanup.doneOne": "Deleted one copy, {0} free again.",
+  "cleanup.failed": "{0} copies could not be deleted; the log says why."
 }

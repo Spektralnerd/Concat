@@ -94,6 +94,7 @@ impl Studio {
                     self.notify(&tf("settings.couldNotShareLog", &[&error]), true);
                 }
             }
+            Some(Confirm::DeleteLeftovers { files, .. }) => self.imports_delete(files),
             Some(Confirm::QuitWithoutSaving { .. }) => {
                 crate::closing("by Quit without saving");
                 log::warn!(
@@ -156,6 +157,20 @@ impl Studio {
                 calm: true,
                 glyph: crate::ui::Glyph::Reset,
             },
+            Confirm::DeleteLeftovers { files, bytes } => {
+                let size = crate::format::bytes(*bytes as f32);
+                let message = match files.len() {
+                    1 => tf("cleanup.askOne", &[&size]),
+                    many => tf("cleanup.ask", &[&many, &size]),
+                };
+                crate::ui::ConfirmData {
+                    open: true,
+                    title: t("cleanup.title").into(),
+                    message: message.into(),
+                    action: t("common.delete").into(),
+                    ..Default::default()
+                }
+            }
             #[cfg(target_os = "android")]
             Confirm::LastRunClosed => crate::ui::ConfirmData {
                 open: true,

@@ -1025,6 +1025,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_media_remove_unused(on_window!(|state| {
         state.handle(Msg::Media(MediaMsg::RemoveUnused));
     }));
+    editor.on_imports_clean_up(on_window!(|state| {
+        state.imports_clean_up();
+    }));
     // Not through the handler macro: nothing here changes the state, and
     // the dialog is asked on a turn of its own with the studio unborrowed;
     // a phone's picker is another screen, and its files come back later.
@@ -2314,7 +2317,7 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     });
     // Fork: the import card's Cancel. The phone stops the copy and reports
     // its end, which takes the card down; nothing is published here.
-    app.on_import_copy_cancel(|| import_copy::cancel());
+    app.on_import_copy_cancel(import_copy::cancel);
     app.on_settings_show_log(on_window!(|state| {
         state.handle(Msg::Settings(SettingsMsg::ShowLog));
     }));
