@@ -540,6 +540,11 @@ struct Shared {
     /// show. Above 1.0 is a mix that clipped.
     peak_left: AtomicU32,
     peak_right: AtomicU32,
+    /// How many times the output has called back. The supervisor reads it
+    /// to say in the log whether a new stream came to life: an output that
+    /// opens without an error and then never calls back leaves the clock,
+    /// and so the picture, stopped, with nothing in the log to say why.
+    callbacks: AtomicU64,
 }
 
 /// The longest the clock runs on past the callback's last word. A callback
@@ -557,6 +562,7 @@ impl Shared {
             muted: AtomicBool::new(false),
             peak_left: AtomicU32::new(0),
             peak_right: AtomicU32::new(0),
+            callbacks: AtomicU64::new(0),
         }
     }
 
@@ -1484,6 +1490,11 @@ fn supervise_stream(
                 // in system settings).
                 let failed = stream.failed;
                 let _stream = stream.stream;
+                // Whether the stream came to life goes in the log after its
+                // first second, so an output that opens and then stays
+                // silent says so.
+                let calls_at_start = shared.callbacks.load(Ordering::Relaxed);
+                let mut judged = false;
                 loop {
                     std::thread::sleep(std::time::Duration::from_millis(1000));
                     if failed.load(Ordering::Relaxed) {
@@ -1492,6 +1503,11 @@ fn supervise_stream(
                             "audio stream failed; rebuilding".to_owned(),
                         );
                         break;
+                    }
+                    if !judged {
+                        judged = true;
+                        let calls = shared.callbacks.load(Ordering::Relaxed) - calls_at_start;
+                        log_first_second(&device_name, calls);
                     }
                     let current = cpal::default_host()
                         .default_output_device()
@@ -1542,6 +1558,51 @@ fn supervise_stream(
     }
 }
 
+/// The configuration to open `device` with: its default, except that on
+/// Android a 48 kHz stereo float stream is asked for wherever the device
+/// offers one.
+///
+/// cpal ranks configurations by a heuristic that prefers 44.1 kHz, and on
+/// Android every standard rate passes its check, so 44.1 kHz is what it
+/// picks. On a Nothing A015 (CMF Phone 1) on Android 16 that stream opens
+/// without an error and then never calls back: the clock, which is the
+/// device's, coasts a tenth of a second past each Play and stops, and the
+/// picture freezes in silence. 48 kHz is the rate phones run at natively
+/// and the rate of the PCM cache; asked for it, the same phone calls back
+/// about thirty times a second and plays.
+fn preferred_output_config(device: &cpal::Device) -> Result<cpal::SupportedStreamConfig, String> {
+    use cpal::traits::DeviceTrait;
+
+    #[cfg(target_os = "android")]
+    {
+        let wanted = cpal::SampleRate(PCM_RATE);
+        let configs = device.supported_output_configs().ok();
+        let offered = configs.into_iter().flatten().find(|range| {
+            range.channels() == 2
+                && range.sample_format() == cpal::SampleFormat::F32
+                && (range.min_sample_rate()..=range.max_sample_rate()).contains(&wanted)
+        });
+        if let Some(range) = offered {
+            return Ok(range.with_sample_rate(wanted));
+        }
+    }
+    device
+        .default_output_config()
+        .map_err(|error| format!("no default output config: {error}"))
+}
+
+/// Says in the log whether a new output stream came to life in its first
+/// second: the one line that tells a frozen picture from a slow one.
+fn log_first_second(device: &str, calls: u64) {
+    if calls > 0 {
+        log::info!(
+            "audio: the output on {device} is running, {calls} callback(s) in its first second"
+        );
+    } else {
+        log::warn!("audio: the output on {device} has not called back in its first second");
+    }
+}
+
 /// A built, playing stream plus its error flag.
 struct BuiltStream {
     stream: cpal::Stream,
@@ -1557,13 +1618,14 @@ fn build_stream(
     events: &Arc<dyn PlaybackEvents>,
     last_active: &Arc<Mutex<Vec<ActiveClip>>>,
 ) -> Result<BuiltStream, String> {
-    use cpal::traits::DeviceTrait;
-
-    let config = device
-        .default_output_config()
-        .map_err(|error| format!("no default output config: {error}"))?;
+    let config = preferred_output_config(device)?;
     let sample_format = config.sample_format();
     let config: cpal::StreamConfig = config.into();
+    log::info!(
+        "audio: opening the output at {} Hz, {} channel(s), {sample_format:?}",
+        config.sample_rate.0,
+        config.channels
+    );
 
     match sample_format {
         cpal::SampleFormat::F32 => {
@@ -1609,6 +1671,7 @@ where
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
+                shared.callbacks.fetch_add(1, Ordering::Relaxed);
                 let mut sought = false;
                 // try_lock, not lock: the audio callback must never block.
                 // Contention only exists while the supervisor swaps streams,
