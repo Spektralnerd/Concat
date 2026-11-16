@@ -1544,13 +1544,31 @@ fn supervise_stream(
                 // ones before it.
                 let mut healthy: u32 = 0;
                 loop {
+                    let slept_from = shared.now_micros();
                     std::thread::sleep(std::time::Duration::from_millis(1000));
+                    // Fork: a stream that failed is rebuilt at once, which
+                    // is no news for the screen - the error said why in the
+                    // log, and the sound is back a moment later.
                     if failed.load(Ordering::Relaxed) {
-                        report(
-                            events.as_ref(),
-                            "audio stream failed; rebuilding".to_owned(),
-                        );
+                        log::info!("audio: the stream failed; rebuilding");
                         break;
+                    }
+                    // Fork: a second's sleep that took far longer is the
+                    // app held still in the background (Android freezes a
+                    // cached app) - the callback was held too, and its
+                    // silence says nothing about the stream. It gets a
+                    // fresh grace; one the system took away meanwhile
+                    // reports its error and is rebuilt like any other.
+                    let slept = shared.now_micros() - slept_from;
+                    if slept > DEAD.as_micros() as i64 {
+                        log::info!(
+                            "audio: Concat was held for {:.1} s; the output gets a fresh start",
+                            slept as f64 / 1_000_000.0
+                        );
+                        shared
+                            .last_callback_micros
+                            .store(shared.now_micros(), Ordering::Relaxed);
+                        continue;
                     }
                     let calls = shared.callbacks.load(Ordering::Relaxed) - calls_at_start;
                     if !judged {
@@ -1565,16 +1583,20 @@ fn supervise_stream(
                             );
                         }
                     }
-                    let quiet_micros = shared.now_micros()
-                        - shared.last_callback_micros.load(Ordering::Relaxed);
+                    let quiet_micros =
+                        shared.now_micros() - shared.last_callback_micros.load(Ordering::Relaxed);
                     if quiet_micros > DEAD.as_micros() as i64 {
                         dead_rebuilds += 1;
                         let message = format!(
                             "audio output stopped answering ({calls} callback(s) since it opened, none for {:.1} s); the picture plays on without sound while it is rebuilt",
                             quiet_micros as f64 / 1_000_000.0
                         );
-                        // Said once on screen; the log keeps every attempt.
-                        if dead_rebuilds == 1 {
+                        // Said on screen once, and only when the stream
+                        // built to replace a dead one died too: one that
+                        // stalls and comes back on the first rebuild is a
+                        // hiccup, not a sound that is gone. The log keeps
+                        // every attempt.
+                        if dead_rebuilds == 2 {
                             report(events.as_ref(), message);
                         } else {
                             log::warn!("{message} · attempt {dead_rebuilds}");
@@ -1861,8 +1883,17 @@ where
                 let failed = Arc::clone(&failed);
                 move |error| {
                     // The supervisor rebuilds on this flag; the report says
-                    // why the sound hiccuped.
-                    report(events.as_ref(), format!("audio stream error: {error}"));
+                    // why the sound hiccuped. Fork: a stream the system took
+                    // away - its route changed under headphones, the app
+                    // came back from the background - is rebuilt within a
+                    // second and plays on, so that is said in the log and
+                    // not on screen, where it read as sound that had failed
+                    // (Nothing A015, Android 16, with headphones on).
+                    if matches!(error, cpal::StreamError::DeviceNotAvailable) {
+                        log::info!("audio: the system took the output away ({error}); rebuilding");
+                    } else {
+                        report(events.as_ref(), format!("audio stream error: {error}"));
+                    }
                     failed.store(true, Ordering::Relaxed);
                 }
             },
