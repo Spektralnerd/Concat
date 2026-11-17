@@ -301,9 +301,32 @@ pub struct PlannedLayer {
     /// frame would fit it, which for such a title is one of its pixels to
     /// one of the frame's. See [`Geometry::of`].
     pub overscan: f32,
+    /// Which part of its clip this layer is: zero for the clip itself. A
+    /// Tiles wall with Freeze is planned as its clip and, over it, one copy
+    /// per tile already left behind, the picture at the moment that tile
+    /// froze; the copy for the `n`th tile carries `n`, the first being 1,
+    /// and its effects read it as `frame.part` to draw that tile alone.
+    pub part: u32,
+    /// How many copies of this layer are drawn over it (`part` 1 to this),
+    /// zero for nearly every layer. Its effects read it as a negative
+    /// `frame.part` and leave what the copies draw to them, so each pixel
+    /// is drawn once - a fade or a blend mode on the clip then treats a
+    /// frozen tile as it treats the live one.
+    pub copies: u32,
 }
 
 impl PlannedLayer {
+    /// What the layer's effects read as `frame.part`: the copy's number
+    /// for a copy, minus how many copies are drawn over it for the layer
+    /// itself, and zero for a layer drawn whole. See [`PlannedLayer::part`].
+    pub fn part_seen(&self) -> f32 {
+        if self.part > 0 {
+            self.part as f32
+        } else {
+            -(self.copies as f32)
+        }
+    }
+
     /// A layer of `frame` with nothing else set: opaque, unmoved, whole,
     /// untreated, on track zero. Where a test or a tool that already has
     /// its pixels starts from.
@@ -329,6 +352,8 @@ impl PlannedLayer {
             blend: Blend::Normal,
             opacity: 1.0,
             overscan: 1.0,
+            part: 0,
+            copies: 0,
         }
     }
 
@@ -481,6 +506,10 @@ impl PlannedLayer {
             // fills the frame behind it, and shows where the mask cuts.
             masks: MaskStack::default(),
             blend: Blend::Normal,
+            // Drawn whole: no copy is ever drawn over a background, so a
+            // blurred one is the clip's wall with every tile live.
+            part: 0,
+            copies: 0,
             ..self.clone()
         };
         let (picture, effects) = match backdrop {
@@ -946,6 +975,8 @@ pub fn plan_frame(timeline: &Timeline, time: Rational) -> FramePlan {
             // sees a per-frame opacity - it has no idea fades exist.
             opacity: (clip.opacity_at(time) * clip.video_fade_factor(time)).clamp(0.0, 1.0),
             overscan: clip.overscan as f32,
+            part: 0,
+            copies: 0,
         });
     }
 

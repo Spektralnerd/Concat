@@ -1842,7 +1842,7 @@ fn treated(
     gpu.used.values_mut().for_each(|used| *used = 0);
     gpu.composites += 1;
     let source = written(gpu, size, picture);
-    let drawn = gpu.run_passes(size.0, size.1, source, passes, 0.0, 0.0);
+    let drawn = gpu.run_passes(size.0, size.1, source, passes, 0.0, 0.0, 0.0);
     let out = read_floats(gpu, size, drawn);
     gpu.retire();
     out
@@ -2776,4 +2776,76 @@ fn the_709_frame_survives_hundreds_of_frames_on_the_software_adapter() {
             "frame {index} is black: {lit} pixels lit"
         );
     }
+}
+
+/// A frozen tile's copy draws its own tile and leaves the rest clear, so
+/// the wall beneath it shows through: of three across, the second tile is
+/// the middle third. The clip itself, drawn with Freeze on, is the wall as
+/// it would be without it.
+#[test]
+fn a_frozen_tiles_copy_draws_only_its_tile() {
+    let Some(mut gpu) = heavy_gpu() else { return };
+    let package = concat_effects::Catalogue::builtin()
+        .get("concat.tiles")
+        .expect("the Tiles package");
+    let set: BTreeMap<String, f64> = [("freeze".to_owned(), 1.0), ("build".to_owned(), 1.0)]
+        .into_iter()
+        .collect();
+    let pass = package.pass(&set, None).expect("a pass");
+    let source = Arc::new(solid(96, 32, [200, 40, 40, 255]));
+    let mut draw = |part: u32, copies: u32| {
+        let mut layer = PlannedLayer::picture(detached_clip(), Arc::clone(&source));
+        layer.effects = vec![pass.clone()];
+        layer.part = part;
+        layer.copies = copies;
+        let plan = FramePlan {
+            time: concat_core::time::Rational::new(5, 1),
+            width: 96,
+            height: 32,
+            canvas: [0, 0, 200, 255],
+            layers: vec![layer],
+            treatments: Vec::new(),
+            output: concat_core::frame::Signal::Sdr,
+        };
+        let texture = gpu.render_texture(&plan).expect("draws");
+        read_texture(&gpu, &texture)
+    };
+    let at = |frame: &Frame, x: u32| {
+        let i = ((16 * frame.width() + x) * 4) as usize;
+        let p = frame.pixels();
+        [p[i], p[i + 1], p[i + 2]]
+    };
+    let near = |got: [u8; 3], want: [u8; 3]| got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 8);
+    let (red, blue) = ([200, 40, 40], [0, 0, 200]);
+
+    // Five seconds in at the default 120 BPM, all three are built: the
+    // clip itself is red across.
+    let wall = draw(0, 0);
+    for x in [16, 48, 80] {
+        assert!(
+            near(at(&wall, x), red),
+            "the wall at {x}: {:?}",
+            at(&wall, x)
+        );
+    }
+    let copy = draw(2, 0);
+    assert!(near(at(&copy, 48), red), "its tile: {:?}", at(&copy, 48));
+    for x in [16, 80] {
+        assert!(near(at(&copy, x), blue), "clear at {x}: {:?}", at(&copy, x));
+    }
+    // With two copies over it, the clip leaves their tiles clear and
+    // draws the newest alone.
+    let clip = draw(0, 2);
+    for x in [16, 48] {
+        assert!(
+            near(at(&clip, x), blue),
+            "left to a copy at {x}: {:?}",
+            at(&clip, x)
+        );
+    }
+    assert!(
+        near(at(&clip, 80), red),
+        "the live tile: {:?}",
+        at(&clip, 80)
+    );
 }

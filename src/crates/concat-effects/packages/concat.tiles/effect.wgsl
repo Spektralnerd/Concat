@@ -11,6 +11,16 @@
 // as Shown says, which a keyframe can move. Where no tile is yet, between
 // tiles and past a picture zoomed out smaller than its tile, it is black
 // or clear.
+//
+// Freeze, building on the beat, leaves each tile at the moment the next
+// one came: the host plans the wall as the clip and, over it, one copy per
+// tile already left behind - the clip at that tile's moment, `frame.part`
+// its place in the order, the first being 1 - which draws that tile alone
+// and nothing else. The clip itself then carries minus the number of
+// copies and leaves their tiles clear, so each tile is drawn once and a
+// fade or a blend mode treats a frozen tile as it does the live one.
+// Without copies - an effect card, a probe - it draws every tile live.
+// The shader never sees the switch; the host reads it.
 
 struct Params {
     across: f32,
@@ -21,6 +31,7 @@ struct Params {
     shown: f32,
     build: f32,
     bpm: f32,
+    freeze: f32,
     order: f32,
     gap: f32,
     empty: f32,
@@ -77,8 +88,22 @@ fn showing(count: i32) -> i32 {
     return most;
 }
 
+// Whether this draw is a frozen tile's copy, which shows only its tile.
+fn copy() -> bool {
+    return frame.part > 0.5;
+}
+
+// How many tiles, first in the order, copies draw over the clip itself:
+// zero unless the host made copies.
+fn frozen() -> i32 {
+    return i32(round(max(-frame.part, 0.0)));
+}
+
+// What is drawn where there is no tile: black or clear, and always clear
+// in a frozen tile's copy, which must not hide the wall beneath it.
 fn nothing() -> vec4<f32> {
-    return select(vec4<f32>(0.0, 0.0, 0.0, 1.0), vec4<f32>(0.0), round(params.empty) == 1.0);
+    let clear = copy() || round(params.empty) == 1.0;
+    return select(vec4<f32>(0.0, 0.0, 0.0, 1.0), vec4<f32>(0.0), clear);
 }
 
 fn effect(uv: vec2<f32>) -> vec4<f32> {
@@ -88,7 +113,17 @@ fn effect(uv: vec2<f32>) -> vec4<f32> {
     let cell = min(floor(uv * grid), grid - vec2<f32>(1.0));
     let x = i32(cell.x);
     let y = i32(cell.y);
-    if (rank(x, y, cols, rows) >= showing(cols * rows)) {
+    let place = rank(x, y, cols, rows);
+    if (copy()) {
+        if (place != i32(round(frame.part)) - 1) {
+            return nothing();
+        }
+    } else if (place < frozen()) {
+        // A copy draws this tile, frozen.
+        return vec4<f32>(0.0);
+    } else if (place >= max(showing(cols * rows), frozen() + 1)) {
+        // The newest tile always: the host counted it there, and a count
+        // a hair apart from the host's must not leave a hole for a frame.
         return nothing();
     }
 

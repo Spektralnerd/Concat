@@ -70,10 +70,13 @@ fn render_in_bands(plan: &FramePlan, rows: usize) -> Frame {
                 .map(top_bytes)
         })
         .collect();
+    // A frozen tile's copy is drawn by its effect alone, which the CPU
+    // leaves out: drawn here it would be its whole picture over the wall.
     let layers: Vec<Placed<'_>> = plan
         .layers
         .iter()
         .zip(&shallow)
+        .filter(|(layer, _)| layer.part == 0)
         .filter_map(|(layer, shallow)| Placed::of(plan, layer, shallow.as_ref()))
         .collect();
     if layers.is_empty() {

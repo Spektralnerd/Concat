@@ -61,6 +61,21 @@ params = { shift_x = -25, shift_y = 25 }
 input = [0.8, 0.5, 0.3, 1]
 expect = [0.8, 0.5, 0.3, 1]
 
+# Freeze is the host's: on the clip itself, the wall draws as it would
+# without it - building, at the clip's start only the first tile, not the
+# middle pixel's.
+[[probe]]
+name = "freeze on, building, the clip itself shows only its first tile"
+params = { freeze = 1, build = 1 }
+input = [0.8, 0.5, 0.3, 1]
+expect = [0, 0, 0, 1]
+
+[[probe]]
+name = "freeze on, all at once, a flat colour holds"
+params = { freeze = 1 }
+input = [0.8, 0.5, 0.3, 1]
+expect = [0.8, 0.5, 0.3, 1]
+
 # Zoomed out to a quarter, the picture still covers the middle.
 [[probe]]
 name = "zoomed out, the middle still shows"

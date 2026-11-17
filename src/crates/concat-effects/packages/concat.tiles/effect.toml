@@ -7,7 +7,7 @@ kind = "effect"
 category = "Distort"
 order = 53
 intensity = "across"
-description = "The picture repeated side by side like a wall of screens, all at once or a tile at a time on the beat from the clip's start."
+description = "The picture repeated side by side like a wall of screens, all at once or a tile at a time on the beat from the clip's start. With Freeze, each tile stops where it was as the next one comes, as a video mixer's strobe did."
 
 [[param]]
 key = "across"
@@ -81,6 +81,15 @@ min = 40
 max = 240
 step = 1
 default = 120
+
+[[param]]
+key = "freeze"
+label = "Freeze"
+type = "bool"
+min = 0
+max = 1
+default = 0
+step = 1
 
 [[param]]
 key = "order"

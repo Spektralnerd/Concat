@@ -23,6 +23,7 @@
 mod ahead;
 pub mod chains;
 pub mod flatten;
+mod frozen;
 mod resolve;
 #[cfg(test)]
 mod speed_curve_tests;
@@ -1605,8 +1606,11 @@ fn with_backdrops(
     }
     let mut out = Vec::with_capacity(layers.len() + 1);
     for layer in layers {
+        // A frozen tile's copy is drawn over its clip, which has its
+        // background already: one under the copy would hide the wall.
         let drawn = backdrops
             .get(&layer.clip)
+            .filter(|_| layer.part == 0)
             .filter(|_| !layer.covers(width, height, opaque(layer.clip)))
             .and_then(|backdrop| backdrop_of(backdrop, pool, (width, height)))
             .and_then(|backdrop| layer.backdrop(&backdrop, width, height, blur_pass));
@@ -1995,7 +1999,8 @@ fn render_picture(
 
             let reading = std::time::Instant::now();
             let time = rate.time_of_frame(index);
-            let plan = plan_frame(&timeline, time);
+            let mut plan = plan_frame(&timeline, time);
+            plan.layers = frozen::with_frozen_tiles(plan.layers, &chains, &timeline, time, rate);
             feeds.look_ahead(
                 index,
                 total_frames,
@@ -3198,7 +3203,8 @@ pub fn preview_sources_of(
     } = &plan.built;
     let highlight = *highlight;
     let time = quantise(seconds, rate);
-    let plan_at = plan_frame(timeline, time);
+    let mut plan_at = plan_frame(timeline, time);
+    plan_at.layers = frozen::with_frozen_tiles(plan_at.layers, chains, timeline, time, rate);
 
     let mut layers: Vec<PlannedLayer> = Vec::with_capacity(plan_at.layers.len());
     let mut failures: Vec<String> = Vec::new();

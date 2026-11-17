@@ -72,6 +72,14 @@ struct Frame {
     /// stack, a synthesized ground - carry zero here always, which reads
     /// as "just started" forever; a look that only loops is unaffected.
     clip_time: f32,
+    /// Which part of its layer this draw is: zero for the layer drawn
+    /// whole, as nearly every draw is. A layer the host draws again at
+    /// other moments - a Tiles wall with Freeze, each tile left behind held
+    /// at the moment it froze - carries `n` in its `n`th copy, the first
+    /// being 1, and minus the number of copies in the layer itself, which
+    /// leaves to them what they draw; a package that never asks for copies
+    /// can leave it unread.
+    part: f32,
 }
 
 @group(0) @binding(0) var source: texture_2d<f32>;
