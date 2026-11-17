@@ -9,7 +9,7 @@ import { SelectedClipData } from "../timeline/model.slint";
 import { Row, Section, SectionBody, SectionHeader } from "../primitives/panel.slint";
 import { Button, Progress } from "../primitives/modal.slint";
 import { SegmentedControl } from "../primitives/segmented-control.slint";
-import { HelpButton, Note } from "controls.slint";
+import { HelpButton, Note, Switch } from "controls.slint";
 
 /// Smooth slow motion: the clip pointed at a copy of its span with frames
 /// made in between its own, so a clip slowed down plays a fresh picture
@@ -129,6 +129,35 @@ export component SmoothPanel inherits VerticalLayout {
                     : root.selected.smooth-method == 1
                         ? I18n.t("smooth.aboutBlend")
                         : I18n.t("smooth.aboutClassic");
+            }
+
+            // Faster, AI's own switch: the motion read at half size. The
+            // whole row takes the tap - the switch alone is a small mark
+            // for a finger - and the switch only shows the setting.
+            if root.selected.smooth-method == 0: Rectangle {
+                height: Theme.h + 8px;
+                Row {
+                    width: parent.width;
+                    height: parent.height;
+                    label: I18n.t("smooth.quick");
+                    Rectangle { horizontal-stretch: 1; }
+                    VerticalLayout {
+                        alignment: center;
+                        Switch {
+                            checked: root.selected.smooth-quick;
+                            enabled: root.live && !root.running;
+                        }
+                    }
+                }
+                TouchArea {
+                    enabled: root.live && !root.running;
+                    mouse-cursor: self.enabled ? pointer : default;
+                    clicked => { Editor.clip-smooth-quick(!root.selected.smooth-quick); }
+                }
+            }
+
+            if root.selected.smooth-method == 0 && root.selected.smooth-quick: Note {
+                text: I18n.t("smooth.aboutQuick");
             }
 
             Row {

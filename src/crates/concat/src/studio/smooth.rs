@@ -68,7 +68,7 @@ impl Studio {
         }
     }
 
-    /// The Frames row: two, four or eight frames for each of the file's.
+    /// The Frames row: two to thirty-two frames for each of the file's.
     pub fn clip_smooth_factor(&mut self, factor: i32) {
         self.smooth_factor = host_tween::factor_of(factor.max(0) as u32);
     }
@@ -78,6 +78,12 @@ impl Studio {
         if let Some(method) = Method::ALL.get(index.max(0) as usize) {
             self.smooth_method = *method;
         }
+    }
+
+    /// Faster, under AI: the motion read at half size, two to three times
+    /// as quick. Kept when another method is picked and back again.
+    pub fn clip_smooth_quick(&mut self, on: bool) {
+        self.smooth_quick = on;
     }
 
     /// The section's one button: Make smooth, or again on a clip that has
@@ -150,7 +156,7 @@ impl Studio {
         }
         let fps = media.frame_rate.unwrap_or(30.0);
         let factor = host_tween::effective_factor(self.smooth_factor, fps);
-        let method = self.smooth_method;
+        let method = self.smooth_method.with_quick(self.smooth_quick);
         // The span the clip shows of the original, and a second either side
         // so a small trim after is still inside the copy.
         let start = Self::smooth_original_start(&clip);
@@ -349,6 +355,7 @@ impl Studio {
 fn method_label(method: Method) -> String {
     match method {
         Method::Motion => t("smooth.methodAi"),
+        Method::MotionQuick => t("smooth.methodAiQuick"),
         Method::Blend => t("smooth.methodBlend"),
         Method::Classic => t("smooth.methodClassic"),
     }

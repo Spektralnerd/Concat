@@ -346,10 +346,12 @@ export global Editor {
     callback clip-enhance-preview();
     callback clip-enhance-run();
     /// The Smooth slow motion section; see SmoothPanel. The tick, the
-    /// Frames row (2, 4 or 8), the Method row's index, and the button.
+    /// Frames row (2 to 32), the Method row's index, Faster under AI, and
+    /// the button.
     callback clip-smooth-set(on: bool);
     callback clip-smooth-factor(factor: int);
     callback clip-smooth-method(method: int);
+    callback clip-smooth-quick(on: bool);
     callback clip-smooth-run();
     /// The transition riding into the selected clip; see VideoPanel.
     callback transition-remove();

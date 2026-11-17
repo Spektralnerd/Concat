@@ -1853,6 +1853,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_clip_smooth_method(on_window!(|state, method: i32| {
         state.clip_smooth_method(method);
     }));
+    editor.on_clip_smooth_quick(on_window!(|state, on: bool| {
+        state.clip_smooth_quick(on);
+    }));
     editor.on_clip_smooth_run(on_window!(|state| {
         state.clip_smooth_run();
     }));

@@ -627,11 +627,13 @@ export struct SelectedClipData {
     smooth-busy: bool,
     /// The clip is footage, which the section works on
     smooth-footage: bool,
-    /// The Frames row as the next run makes it for this file: 2, 4 or 8,
-    /// after the cap on a copy's rate; the Method row's index; what the
-    /// clip's copy was made with ("4× · AI"), and the rates ("24 → 96 fps")
+    /// The Frames row as the next run makes it for this file, 2 to 32,
+    /// after the cap on a copy's rate; the Method row's index; Faster,
+    /// under AI; what the clip's copy was made with ("4× · AI"), and the
+    /// rates ("24 → 96 fps")
     smooth-factor: int,
     smooth-method: int,
+    smooth-quick: bool,
     smooth-made: string,
     smooth-rates: string,
     /// Reverse writing this clip's backwards copy: -1 when it is not,

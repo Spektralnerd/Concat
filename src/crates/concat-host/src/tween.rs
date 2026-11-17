@@ -51,6 +51,9 @@ pub enum Method {
     /// RIFE: things moved to where they were between the two frames.
     #[default]
     Motion,
+    /// RIFE reading the motion at half size: Motion with Faster ticked.
+    /// Not a place on the Method row - the row shows it as AI.
+    MotionQuick,
     /// The two frames faded into each other.
     Blend,
     /// FFmpeg's `minterpolate`: motion estimated block by block.
@@ -58,13 +61,15 @@ pub enum Method {
 }
 
 impl Method {
-    /// Every method, in the order a menu lists them.
+    /// The Method row's places, in its order. Faster is a switch under
+    /// AI, not a place of its own.
     pub const ALL: [Method; 3] = [Method::Motion, Method::Blend, Method::Classic];
 
     /// The name a document and a copy's file name store.
     pub fn name(self) -> &'static str {
         match self {
             Method::Motion => "ai",
+            Method::MotionQuick => "ai-fast",
             Method::Blend => "blend",
             Method::Classic => "ffmpeg",
         }
@@ -73,6 +78,7 @@ impl Method {
     /// The method a stored name means; anything else is RIFE's.
     pub fn parse(name: &str) -> Method {
         match name {
+            "ai-fast" => Method::MotionQuick,
             "blend" => Method::Blend,
             "ffmpeg" => Method::Classic,
             _ => Method::Motion,
@@ -81,13 +87,42 @@ impl Method {
 
     /// Whether it needs the model downloaded.
     pub fn needs_model(self) -> bool {
-        self == Method::Motion
+        matches!(self, Method::Motion | Method::MotionQuick)
+    }
+
+    /// Whether it is RIFE at the quicker side.
+    pub fn quick(self) -> bool {
+        self == Method::MotionQuick
+    }
+
+    /// The Method row's place this is shown in: AI for either RIFE.
+    pub fn row(self) -> Method {
+        match self {
+            Method::MotionQuick => Method::Motion,
+            other => other,
+        }
+    }
+
+    /// This method with Faster ticked or not; only RIFE has the switch.
+    pub fn with_quick(self, quick: bool) -> Method {
+        match (self.row(), quick) {
+            (Method::Motion, true) => Method::MotionQuick,
+            (row, _) => row,
+        }
+    }
+
+    /// The longest side RIFE reads the motion at.
+    pub fn flow_side(self) -> u32 {
+        if self.quick() {
+            vision::QUICK_SIDE
+        } else {
+            vision::FLOW_SIDE
+        }
     }
 }
 
-/// How many frames a copy may have for each of its file's: two, four or
-/// eight. More is offered nowhere: a quarter speed is smooth at four, and
-/// past eight the copy outgrows any use.
+/// How many frames a copy may have for each of its file's: as many as the
+/// clip is slowed by, so a quarter wants four and a sixteenth sixteen.
 pub const FACTORS: [u32; 5] = [2, 4, 8, 16, 32];
 
 /// The factor a request asks for, held to what is offered.
@@ -327,7 +362,9 @@ fn between(
         return Ok(times.iter().map(|_| a.clone()).collect());
     }
     match (method, tweener) {
-        (Method::Motion, Some(tweener)) => tweener.between(a, b, &times),
+        (Method::Motion | Method::MotionQuick, Some(tweener)) => {
+            tweener.between_at(method.flow_side(), a, b, &times)
+        }
         _ => Ok(times.iter().map(|&t| vision::blend(a, b, t)).collect()),
     }
 }
@@ -591,6 +628,13 @@ mod tests {
             assert_eq!(Method::parse(method.name()), method);
         }
         assert_eq!(Method::parse("something new"), Method::Motion);
+        assert_eq!(Method::parse("ai-fast"), Method::MotionQuick);
+        assert!(Method::MotionQuick.needs_model());
+        assert_eq!(Method::Motion.with_quick(true), Method::MotionQuick);
+        assert_eq!(Method::MotionQuick.with_quick(false), Method::Motion);
+        assert_eq!(Method::Blend.with_quick(true), Method::Blend);
+        assert_eq!(Method::MotionQuick.row(), Method::Motion);
+        assert!(Method::MotionQuick.flow_side() < Method::Motion.flow_side());
         assert!(Method::Motion.needs_model());
         assert!(!Method::Blend.needs_model());
     }
@@ -609,6 +653,7 @@ mod tests {
         assert!(first.to_string_lossy().ends_with("-4x-ai.mp4"), "{first:?}");
         assert_eq!(first, target(4, Method::Motion, (1.0, 2.0)));
         assert_ne!(first, target(8, Method::Motion, (1.0, 2.0)));
+        assert_ne!(first, target(4, Method::MotionQuick, (1.0, 2.0)));
         assert_ne!(first, target(4, Method::Blend, (1.0, 2.0)));
         assert_ne!(first, target(4, Method::Motion, (1.5, 2.0)));
         assert!(target_for(&dir, "/no/such/file.mp4", 4, Method::Motion, (0.0, 1.0)).is_none());

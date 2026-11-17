@@ -37,6 +37,13 @@ use concat_core::frame::BYTES_PER_PIXEL;
 /// are moved at their own size.
 pub const FLOW_SIDE: u32 = 1024;
 
+/// The longest side Faster reads the motion at: half [`FLOW_SIDE`], a
+/// quarter of its pixels. The network's run is most of a frame's time, so
+/// a copy comes two to three times as fast - 0.75 s a frame against 0.29
+/// on a 1080p pair, measured on two cores - and fine detail and small,
+/// quick things move a little less exactly.
+pub const QUICK_SIDE: u32 = 512;
+
 /// What the network's sides must be a whole number of: its finest level
 /// reads the frame an eighth the size, and that eighth halved twice more.
 const MULTIPLE: u32 = 32;
@@ -101,20 +108,38 @@ struct Field<'a> {
     height: usize,
 }
 
+/// Where one coordinate falls between a field's pixels: the two either
+/// side, held to the edge, and how far towards the second. Worked out once
+/// a row and once a column, not five times a pixel - the field is read at
+/// the same place for each of its planes.
+#[derive(Clone, Copy)]
+struct Between {
+    near: usize,
+    far: usize,
+    toward: f32,
+}
+
+impl Between {
+    fn of(at: f32, size: usize) -> Between {
+        let at = at.clamp(0.0, (size - 1) as f32);
+        let near = at.floor() as usize;
+        Between {
+            near,
+            far: (near + 1).min(size - 1),
+            toward: at - near as f32,
+        }
+    }
+}
+
 impl Field<'_> {
-    /// Plane `channel` at `(x, y)`, in the field's pixels.
-    fn at(&self, channel: usize, x: f32, y: f32) -> f32 {
+    /// Plane `channel` where `x` and `y` fall, in the field's pixels.
+    fn at(&self, channel: usize, x: Between, y: Between) -> f32 {
         let plane = &self.values[channel * self.width * self.height..];
-        let x = x.clamp(0.0, (self.width - 1) as f32);
-        let y = y.clamp(0.0, (self.height - 1) as f32);
-        let (x0, y0) = (x.floor() as usize, y.floor() as usize);
-        let (x1, y1) = ((x0 + 1).min(self.width - 1), (y0 + 1).min(self.height - 1));
-        let (ax, ay) = (x - x0 as f32, y - y0 as f32);
-        let row0 = y0 * self.width;
-        let row1 = y1 * self.width;
-        let top = plane[row0 + x0] * (1.0 - ax) + plane[row0 + x1] * ax;
-        let bottom = plane[row1 + x0] * (1.0 - ax) + plane[row1 + x1] * ax;
-        top * (1.0 - ay) + bottom * ay
+        let row0 = y.near * self.width;
+        let row1 = y.far * self.width;
+        let top = plane[row0 + x.near] * (1.0 - x.toward) + plane[row0 + x.far] * x.toward;
+        let bottom = plane[row1 + x.near] * (1.0 - x.toward) + plane[row1 + x.far] * x.toward;
+        top * (1.0 - y.toward) + bottom * y.toward
     }
 }
 
@@ -187,15 +212,17 @@ pub fn compose(
         .unwrap_or(1)
         .clamp(1, 8);
     let rows_each = height.div_ceil(workers).max(1);
+    let columns: Vec<Between> = (0..width)
+        .map(|x| Between::of((x as f32 + 0.5) * to_x - 0.5, fw))
+        .collect();
     std::thread::scope(|scope| {
         for (band, chunk) in out.chunks_mut(rows_each * row_bytes).enumerate() {
-            let (motion, share) = (&motion, &share);
+            let (motion, share, columns) = (&motion, &share, &columns);
             scope.spawn(move || {
                 for (offset, row) in chunk.chunks_mut(row_bytes).enumerate() {
                     let y = band * rows_each + offset;
-                    let fy = (y as f32 + 0.5) * to_y - 0.5;
-                    for x in 0..width {
-                        let fx = (x as f32 + 0.5) * to_x - 0.5;
+                    let fy = Between::of((y as f32 + 0.5) * to_y - 0.5, fh);
+                    for (x, &fx) in columns.iter().enumerate() {
                         let (xf, yf) = (x as f32, y as f32);
                         let pa = sample(
                             from,
@@ -269,10 +296,22 @@ impl Tweener {
     /// `0..=1` of the way: the two frames read once, the network run once
     /// a moment.
     pub fn between(&self, a: &Frame, b: &Frame, times: &[f32]) -> Result<Vec<Frame>, String> {
+        self.between_at(self.side, a, b, times)
+    }
+
+    /// [`Tweener::between`], the motion read at most `side` pixels long
+    /// for this pair: one loaded network serves Faster and the full size.
+    pub fn between_at(
+        &self,
+        side: u32,
+        a: &Frame,
+        b: &Frame,
+        times: &[f32],
+    ) -> Result<Vec<Frame>, String> {
         if a.width() != b.width() || a.height() != b.height() {
             return Err("the two frames are not one size".to_owned());
         }
-        let (fw, fh) = flow_size(a.width(), a.height(), self.side);
+        let (fw, fh) = flow_size(a.width(), a.height(), side.max(MULTIPLE));
         let (first, second) = (planes(a, fw, fh), planes(b, fw, fh));
         let dims = vec![1, 3, fh as usize, fw as usize];
         let mut model = self

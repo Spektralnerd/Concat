@@ -1464,6 +1464,7 @@ impl Studio {
                 .iter()
                 .position(|method| *method == self.smooth_method)
                 .unwrap_or(0) as i32,
+            smooth_quick: self.smooth_quick,
             smooth_made: smooth.made.into(),
             smooth_rates: smooth.rates.into(),
             enhance_linked: clip.enhanced.is_some(),

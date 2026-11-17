@@ -1347,6 +1347,8 @@ pub struct Studio {
     /// own (see `concat_host::tween::target_for`).
     smooth_factor: u32,
     smooth_method: concat_host::tween::Method,
+    /// Faster, the switch under AI: the motion read at half size.
+    smooth_quick: bool,
     /// Clips whose section is ticked but that have no copy yet, as for
     /// Enhance.
     smooth_ticked: HashSet<String>,
@@ -3240,6 +3242,7 @@ impl Studio {
             smooth_jobs: HashMap::new(),
             smooth_factor: 4,
             smooth_method: concat_host::tween::Method::Motion,
+            smooth_quick: false,
             smooth_ticked: HashSet::new(),
             reverse_jobs: HashMap::new(),
             merge_job: None,
