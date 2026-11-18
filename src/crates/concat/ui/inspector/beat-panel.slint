@@ -9,6 +9,7 @@ import { SelectedClipData } from "../timeline/model.slint";
 import { Row, Section, SectionBody, SectionHeader } from "../primitives/panel.slint";
 import { Button, Progress } from "../primitives/modal.slint";
 import { NumberField } from "../primitives/number-field.slint";
+import { Focus } from "../util.slint";
 import { SegmentedControl } from "../primitives/segmented-control.slint";
 import { HelpButton, Note, Param, ParamFormat, SwitchRow } from "controls.slint";
 
@@ -173,7 +174,7 @@ export component BeatPanel inherits VerticalLayout {
                 HelpButton {
                     text: I18n.t("beats.bpmHelp");
                 }
-                NumberField {
+                bpm-field := NumberField {
                     width: 72px;
                     value <=> root.bpm;
                     minimum: 1;
@@ -184,7 +185,11 @@ export component BeatPanel inherits VerticalLayout {
                 Button {
                     horizontal-stretch: 1;
                     label: I18n.t("beats.findSteady");
-                    clicked => { Editor.beats-detect-at(root.bpm); }
+                    // What is typed, whether or not the field let go yet.
+                    clicked => {
+                        Editor.beats-detect-at(bpm-field.current);
+                        Focus.release();
+                    }
                 }
             }
 

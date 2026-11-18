@@ -58,6 +58,14 @@ export component NumberField inherits Rectangle {
     property <string> display: root.format(root.value);
     property <length> keyframe-slot: root.keyframe ? 27px : 0px;
 
+    /// The value as it stands, typing included: what the field holds once
+    /// it lets go of the focus, read before it has. For a button beside the
+    /// field that acts on its number - a press on the button does not take
+    /// the focus from the field, so the field has not committed yet.
+    out property <float> current: ti.has-focus
+        ? Fmt.clamp(root.parse(ti.text), root.minimum, root.maximum)
+        : root.value;
+
     height: Theme.h;
     min-width: 44px;
     horizontal-stretch: 1;
