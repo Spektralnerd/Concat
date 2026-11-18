@@ -8,6 +8,7 @@ import { Editor } from "../editor.slint";
 import { SelectedClipData } from "../timeline/model.slint";
 import { Row, Section, SectionBody, SectionHeader } from "../primitives/panel.slint";
 import { Button, Progress } from "../primitives/modal.slint";
+import { NumberField } from "../primitives/number-field.slint";
 import { SegmentedControl } from "../primitives/segmented-control.slint";
 import { HelpButton, Note, Param, ParamFormat, SwitchRow } from "controls.slint";
 
@@ -27,11 +28,15 @@ export component BeatPanel inherits VerticalLayout {
     property <float> per-bar;
     property <float> every;
     property <float> offset;
+    /// The tempo to find a steady row at, as typed; the grid's own until
+    /// then.
+    property <float> bpm;
 
     function seed() {
         root.per-bar = root.selected.beats-per-bar;
         root.every = root.selected.beats-every;
         root.offset = root.selected.beats-offset;
+        root.bpm = Math.round(root.selected.beats-tempo * 10) / 10;
     }
 
     init => { root.seed(); }
@@ -156,6 +161,30 @@ export component BeatPanel inherits VerticalLayout {
                     label: I18n.t("beats.later");
                     glyph: Glyph.chevron-right;
                     clicked => { Editor.beats-shift(1); }
+                }
+            }
+
+            // The tempo typed in, for a song the finder counts wrong some
+            // other way, or lets wander through an intro: the beats found
+            // again as one steady row at it. Typing alone finds nothing;
+            // the button does, so a field tapped by mistake costs nothing.
+            if root.found && !root.running: Row {
+                label: I18n.t("beats.bpm");
+                HelpButton {
+                    text: I18n.t("beats.bpmHelp");
+                }
+                NumberField {
+                    width: 72px;
+                    value <=> root.bpm;
+                    minimum: 1;
+                    maximum: 999;
+                    step: 0.1;
+                    precision: 1;
+                }
+                Button {
+                    horizontal-stretch: 1;
+                    label: I18n.t("beats.findSteady");
+                    clicked => { Editor.beats-detect-at(root.bpm); }
                 }
             }
 

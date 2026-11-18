@@ -1812,6 +1812,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_beats_detect(on_window!(|state| {
         state.beats_detect();
     }));
+    editor.on_beats_detect_at(on_window!(|state, bpm: f32| {
+        state.beats_detect_at(bpm);
+    }));
     editor.on_beats_cancel(on_window!(|state| {
         state.beats_cancel();
     }));

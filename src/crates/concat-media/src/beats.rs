@@ -13,14 +13,21 @@
 //! most music is counted along.
 //!
 //! From that onset curve the tempo is the spacing it repeats at most
-//! strongly (its autocorrelation, weighted towards the tempos music is
-//! usually counted in), and the beats are the one row of evenly spaced
-//! moments that lands on the most onsets, found by dynamic programming
+//! strongly, there and again a bar later (its autocorrelation, weighted
+//! towards the tempos music is usually counted in), and the beats are the
+//! one row of evenly spaced moments that lands on the most onsets, found by
+//! dynamic programming
 //! (D. Ellis, "Beat Tracking by Dynamic Programming", 2007). A row is
 //! allowed to breathe a little, so a band that drifts is followed, and it
 //! carries on through a break where the drums stop, so the grid does not
 //! fall apart in the quiet bar before a chorus. Each beat is then moved onto
 //! the hit it sits on, between two frames where the hit falls between them.
+//!
+//! A tempo the person types in is taken at their word: the beats are then
+//! one steady row at that tempo, a hair either side of it, laid where it
+//! lands on the most hits - the song counted all through the way it was
+//! played to a click, through an intro or a break with no drums, where a
+//! row found on its own follows whatever plays there; see [`steady`].
 //!
 //! Which beat is the first of a bar is told apart by what usually happens
 //! there: the kick, and a change of chord. Every beat gets an *accent*, how
@@ -64,10 +71,20 @@ pub const MAX_BPM: f64 = 240.0;
 const PRIOR_BPM: f64 = 120.0;
 const PRIOR_OCTAVES: f64 = 1.0;
 
+/// The beats a bar is looked for after, for a tempo to be judged by: four,
+/// and three for music in threes. The first is the farthest.
+const BAR_BEATS: [usize; 2] = [4, 3];
+
 /// How strictly the row of beats keeps its spacing. Higher holds the tempo
 /// through more of a passage that does not support it; lower follows a
 /// drifting band more closely, and wanders more.
 const TIGHTNESS: f64 = 100.0;
+
+/// How far a tempo typed in may be off the song's, either way, for the
+/// steady row to find the song's: a tempo typed rounded - 94 for a song at
+/// 94.24 - is a third of a percent out, and would drift a beat's length off
+/// the hits over a long song if it were laid as typed.
+const STEADY_RANGE: f64 = 0.03;
 
 /// How much more the low bands' onsets count than the rest.
 const LOW_WEIGHT: f32 = 1.0;
@@ -75,6 +92,11 @@ const LOW_WEIGHT: f32 = 1.0;
 /// How strong a hit has to be, against the song's typical beat, for the
 /// beat on it to be placed on it rather than carried by the grid.
 const ANCHOR: f32 = 0.5;
+
+/// How much stronger than the song's typical beat a hit has to be for the
+/// beats on one side of it alone to place a beat on it: the first hit of a
+/// drop. See [`place`].
+const DROP: f32 = 2.0;
 
 /// The top of the low bands, the drums': the GIF Visualizer's onset range.
 const LOW_TOP_HZ: f64 = 260.0;
@@ -368,24 +390,35 @@ impl Detector {
         self.seen += 1;
     }
 
-    /// Ends the sound and finds its beats.
-    pub fn finish(mut self) -> Analysis {
+    /// Ends the sound and finds its beats, and their tempo.
+    pub fn finish(self) -> Analysis {
+        self.finish_at(None)
+    }
+
+    /// Ends the sound and finds its beats: at the tempo found in it, or,
+    /// when `tempo` is given - the person's word for what the song is in,
+    /// in beats per minute - as one steady row at about that tempo, laid
+    /// where it lands on the most hits, through the intro and the breaks
+    /// the drums leave out. See [`steady`].
+    pub fn finish_at(mut self, tempo: Option<f64>) -> Analysis {
         // Half a frame of silence after the last sample, so the last frames
         // are centred on the end as the first were on the start.
         self.pending.extend(std::iter::repeat_n(0.0, FRAME / 2));
         self.drain();
-        track(&self.features, self.bands)
+        track(&self.features, self.bands, tempo)
     }
 }
 
 /// Decodes the audio stream `stream` names (or the file's first) and finds
-/// its beats. `duration` is the sound's length, when it is known, for
-/// `progress`, which is told the fraction done, 0 to 1. Stops between two
-/// decoded chunks once `cancel` is set, and is then `None`.
+/// its beats, at `tempo` beats per minute when that is given (see
+/// [`Detector::finish_at`]). `duration` is the sound's length, when it is
+/// known, for `progress`, which is told the fraction done, 0 to 1. Stops
+/// between two decoded chunks once `cancel` is set, and is then `None`.
 pub fn analyse_file(
     path: &Path,
     stream: Option<usize>,
     duration: Option<f64>,
+    tempo: Option<f64>,
     progress: &mut dyn FnMut(f32),
     cancel: &AtomicBool,
 ) -> Result<Option<Analysis>> {
@@ -418,13 +451,14 @@ pub fn analyse_file(
     if cancel.load(Ordering::Relaxed) {
         return Ok(None);
     }
-    let analysis = detector.finish();
+    let analysis = detector.finish_at(tempo);
     progress(1.0);
     Ok(Some(analysis))
 }
 
-/// From the frames to the beats.
-fn track(features: &Features, bands: usize) -> Analysis {
+/// From the frames to the beats: at the tempo the curve repeats at, or as
+/// a steady row at about `tempo` beats per minute when one is typed in.
+fn track(features: &Features, bands: usize, tempo: Option<f64>) -> Analysis {
     let frames = features.onset.len();
     // Two seconds is the least that holds a few beats at the slowest tempo
     // looked for; less is no tempo at all.
@@ -432,14 +466,34 @@ fn track(features: &Features, bands: usize) -> Analysis {
         return Analysis::default();
     }
     let curve = condition(&features.onset);
-    let Some(period) = period(&curve) else {
-        return Analysis::default();
+    let typed = tempo
+        .filter(|bpm| bpm.is_finite() && *bpm > 0.0)
+        // A beat of at least two frames and at most half the sound: what
+        // a row can be counted in at all.
+        .map(|bpm| (60.0 * FPS / bpm).clamp(2.0, (frames / 2).max(2) as f64));
+    let (mut beats, on_hits, period) = match typed {
+        Some(near) => {
+            let (length, first) = steady(&curve, near);
+            let (period, first) = refine(&features.onset, length, first);
+            let beats: Vec<f64> = (0..)
+                .map(|index| first + index as f64 * period)
+                .take_while(|frame| *frame <= (frames - 1) as f64)
+                .collect();
+            let on_hits = hits_under(&features.onset, &beats);
+            (beats, on_hits, period)
+        }
+        None => {
+            let Some(period) = period(&curve) else {
+                return Analysis::default();
+            };
+            let found = dynamic(&curve, period);
+            if found.is_empty() {
+                return Analysis::default();
+            }
+            let (beats, on_hits) = place(&features.onset, &found, period);
+            (beats, on_hits, period)
+        }
     };
-    let found = dynamic(&curve, period);
-    if found.is_empty() {
-        return Analysis::default();
-    }
-    let (mut beats, on_hits) = place(&features.onset, &found, period);
     // The row can reach a beat into the silence before the music starts or
     // after it ends; there is nothing there to count.
     let quiet = |beat: f64| {
@@ -462,7 +516,13 @@ fn track(features: &Features, bands: usize) -> Analysis {
         return Analysis::default();
     }
     let accents = accents(features, bands, &beats);
-    let tempo = tempo_of(&beats).unwrap_or(60.0 * FPS / period);
+    // A steady row is its spacing; a found one breathes, and its tempo is
+    // the middle of its gaps.
+    let tempo = if typed.is_some() {
+        60.0 * FPS / period
+    } else {
+        tempo_of(&beats).unwrap_or(60.0 * FPS / period)
+    };
     let confidence = (on_hits as f32 / beats.len() as f32).min(1.0);
     Analysis {
         tempo,
@@ -473,6 +533,163 @@ fn track(features: &Features, bands: usize) -> Analysis {
         accents,
         confidence,
     }
+}
+
+/// The steady row at about `near` frames a beat that lands on the most of
+/// the curve: its beat's length, within [`STEADY_RANGE`] of `near`, and
+/// where its first beat falls, both in frames. The curve is folded onto
+/// one beat - every frame added in at the place in the beat it falls at -
+/// and the row goes where the fold piles highest: first in steps of a
+/// length the row drifts half a frame over the sound by, then finely
+/// round the best of them, a quarter of a frame to the place.
+fn steady(curve: &[f32], near: f64) -> (f64, f64) {
+    const PLACES: f64 = 4.0;
+    let frames = curve.len() as f64;
+    let beats = (frames / near).max(1.0);
+    // Where in a beat of `length` the curve piles highest, counted `width`
+    // frames wide, and how high: the place a row's beats fall at.
+    let fold = |length: f64, width: f64| -> (f64, f64) {
+        let places = (length * PLACES).ceil().max(1.0) as usize;
+        let mut pile = vec![0.0f64; places];
+        for (frame, value) in curve.iter().enumerate() {
+            if *value > 0.0 {
+                let place = (frame as f64).rem_euclid(length) * PLACES;
+                pile[(place as usize).min(places - 1)] += f64::from(*value);
+            }
+        }
+        let half = ((width * PLACES / 2.0).round() as usize).min((places - 1) / 2);
+        let mut best = (f64::NEG_INFINITY, 0usize);
+        for middle in 0..places {
+            let sum: f64 = (0..=2 * half)
+                .map(|step| pile[(middle + places + step - half) % places])
+                .sum();
+            if sum > best.0 {
+                best = (sum, middle);
+            }
+        }
+        (best.0, (best.1 as f64 + 0.5) / PLACES)
+    };
+    let range = STEADY_RANGE * near;
+    // No more than two thousand steps, for an hour of sound.
+    let coarse = (1.0 / beats).max(2.0 * range / 2000.0);
+    let search = |from: f64, to: f64, step: f64, width: f64| {
+        let mut best = (f64::NEG_INFINITY, near, 0.0);
+        let mut length = from;
+        while length <= to {
+            let (pile, place) = fold(length, width);
+            if pile > best.0 {
+                best = (pile, length, place);
+            }
+            length += step;
+        }
+        best
+    };
+    let (_, rough, _) = search(near - range, near + range, coarse, 2.0);
+    let (_, length, first) = search(rough - coarse, rough + coarse, coarse / 10.0, 1.0);
+    // The last place's middle can lie a hair past the beat's end.
+    (length, first.rem_euclid(length))
+}
+
+/// The steady row `length` frames a beat from `first` moved onto the hits
+/// it lands on: a line through the strong hits' own places, each between
+/// two frames by its peak's shape as [`place`] has it, fitted by least
+/// squares, then again without the hits more than a frame and a half off
+/// it. The fold places a row to a quarter of a frame, and its length so
+/// that the row is never more than a frame off; the hits put it within a
+/// millisecond or two of every one of them. The row as it came when too few
+/// hits are strong, or when they would move it more than a percent.
+fn refine(onset: &[f32], length: f64, first: f64) -> (f64, f64) {
+    let reach = (0.035 * FPS).round() as isize;
+    let last = onset.len() as isize - 1;
+    let mut hits: Vec<(f64, f64, f32)> = Vec::new();
+    let mut index = 0usize;
+    loop {
+        let beat = first + index as f64 * length;
+        if beat > last as f64 {
+            break;
+        }
+        let at = beat.round() as isize;
+        let (from, to) = ((at - reach).max(0), (at + reach).min(last));
+        if let Some(peak) =
+            (from..=to).max_by(|a, b| onset[*a as usize].total_cmp(&onset[*b as usize]))
+        {
+            let peak = peak as usize;
+            let mut place = peak as f64;
+            if peak > 0 && (peak as isize) < last {
+                let (before, at, after) = (
+                    f64::from(onset[peak - 1]),
+                    f64::from(onset[peak]),
+                    f64::from(onset[peak + 1]),
+                );
+                let bend = before - 2.0 * at + after;
+                if bend < 0.0 {
+                    place += (0.5 * (before - after) / bend).clamp(-0.5, 0.5);
+                }
+            }
+            hits.push((index as f64, place, onset[peak]));
+        }
+        index += 1;
+    }
+    let mut strengths: Vec<f32> = hits.iter().map(|(_, _, strength)| *strength).collect();
+    strengths.sort_by(f32::total_cmp);
+    let typical = strengths.get(strengths.len() / 2).copied().unwrap_or(0.0);
+    let mut kept: Vec<(f64, f64)> = hits
+        .iter()
+        .filter(|(_, _, strength)| typical > 0.0 && *strength >= ANCHOR * typical)
+        .map(|(index, place, _)| (*index, *place))
+        .collect();
+    let mut row = (length, first);
+    for _ in 0..3 {
+        if kept.len() < 4 {
+            return (length, first);
+        }
+        let count = kept.len() as f64;
+        let mean_x = kept.iter().map(|(x, _)| x).sum::<f64>() / count;
+        let mean_y = kept.iter().map(|(_, y)| y).sum::<f64>() / count;
+        let spread: f64 = kept.iter().map(|(x, _)| (x - mean_x).powi(2)).sum();
+        if spread <= 0.0 {
+            return (length, first);
+        }
+        let slope = kept
+            .iter()
+            .map(|(x, y)| (x - mean_x) * (y - mean_y))
+            .sum::<f64>()
+            / spread;
+        row = (slope, mean_y - slope * mean_x);
+        kept.retain(|(x, y)| (y - (row.1 + row.0 * x)).abs() <= 1.5);
+    }
+    if (row.0 / length - 1.0).abs() > 0.01 {
+        return (length, first);
+    }
+    // The first beat may now sit a whole beat before the sound.
+    let first = row.1.rem_euclid(row.0);
+    (row.0, first)
+}
+
+/// How many of `beats`, frames, have a hit on them as strong as the song's
+/// beats are, as [`place`] counts its anchors: for a steady row, which is
+/// not moved onto its hits.
+fn hits_under(onset: &[f32], beats: &[f64]) -> usize {
+    let reach = (0.035 * FPS).round() as usize;
+    let peaks: Vec<f32> = beats
+        .iter()
+        .map(|beat| {
+            let at = (beat.round().max(0.0) as usize).min(onset.len() - 1);
+            let from = at.saturating_sub(reach);
+            let to = (at + reach).min(onset.len() - 1);
+            onset[from..=to].iter().copied().fold(0.0, f32::max)
+        })
+        .collect();
+    let mut sorted = peaks.clone();
+    sorted.sort_by(f32::total_cmp);
+    let typical = sorted.get(sorted.len() / 2).copied().unwrap_or(0.0);
+    if typical <= 0.0 {
+        return 0;
+    }
+    peaks
+        .iter()
+        .filter(|peak| **peak >= ANCHOR * typical)
+        .count()
 }
 
 /// Sums of `values` up to each index, for windowed means in constant time.
@@ -527,10 +744,14 @@ fn condition(onset: &[f32]) -> Vec<f32> {
         .collect()
 }
 
-/// The beat's length in frames, between one and the next: the lag the
-/// curve repeats at most strongly, weighted towards [`PRIOR_BPM`], and
-/// placed between two frames by the shape of the peak. None for a curve
-/// with no repetition in the range at all.
+/// The beat's length in frames, between one and the next. Every lag the
+/// curve repeats at is a candidate, scored by how strongly it repeats there
+/// and a bar later - four beats on, or three for music in threes - weighted
+/// towards [`PRIOR_BPM`]; the winner is placed between two frames by the
+/// shape of its peak. The bar is what tells a beat from three quarters of
+/// one: music that runs in sixteenths repeats nearly as well every three of
+/// them as every four, but its bars come round every sixteen, not every
+/// twelve. None for a curve with no repetition in the range at all.
 fn period(curve: &[f32]) -> Option<f64> {
     let frames = curve.len();
     let shortest = ((60.0 * FPS / MAX_BPM).floor() as usize).max(2);
@@ -550,14 +771,56 @@ fn period(curve: &[f32]) -> Option<f64> {
     if zero <= 0.0 {
         return None;
     }
-    let correlation: Vec<f64> = (0..=longest + 1).map(|lag| lagged(lag) / zero).collect();
+    // Far enough for the bar of the slowest beat, as far as the sound holds.
+    let reach = (BAR_BEATS[0] * longest + BAR_BEATS[0])
+        .min(frames / 2)
+        .max(longest + 1);
+    let correlation: Vec<f64> = (0..=reach).map(|lag| lagged(lag) / zero).collect();
     let weight = |lag: f64| {
         let octaves = (60.0 * FPS / lag / PRIOR_BPM).log2() / PRIOR_OCTAVES;
         (-0.5 * octaves * octaves).exp()
     };
-    let best = (shortest..=longest).max_by(|a, b| {
-        (correlation[*a] * weight(*a as f64)).total_cmp(&(correlation[*b] * weight(*b as f64)))
-    })?;
+    // The strongest repetition within half a frame per beat of `beats`
+    // beats of `lag`: a beat half a frame off its length is two frames off
+    // by the end of a bar. None past what the sound holds.
+    let bar_at = |lag: usize, beats: usize| -> Option<f64> {
+        let middle = (lag * beats) as f64;
+        let slack = beats as f64 / 2.0;
+        let from = (middle - slack).floor() as usize;
+        let to = (middle + slack).ceil() as usize;
+        (to < correlation.len()).then(|| {
+            correlation[from..=to]
+                .iter()
+                .copied()
+                .fold(f64::NEG_INFINITY, f64::max)
+        })
+    };
+    let score = |lag: usize| {
+        let beat = correlation[lag];
+        let bar = BAR_BEATS
+            .iter()
+            .filter_map(|beats| bar_at(lag, *beats))
+            .reduce(f64::max)
+            .unwrap_or(beat);
+        weight(lag as f64) * (beat + bar) / 2.0
+    };
+    // The lags the curve peaks at; a beat has to repeat itself, not only
+    // land a bar on something that does.
+    let peaks: Vec<usize> = (shortest..=longest)
+        .filter(|&lag| {
+            correlation[lag] > 0.0
+                && correlation[lag] >= correlation[lag - 1]
+                && correlation[lag] >= correlation[lag + 1]
+        })
+        .collect();
+    let candidates: Vec<usize> = if peaks.is_empty() {
+        (shortest..=longest).collect()
+    } else {
+        peaks
+    };
+    let best = candidates
+        .into_iter()
+        .max_by(|a, b| score(*a).total_cmp(&score(*b)))?;
     if correlation[best] <= 0.0 {
         return None;
     }
@@ -749,32 +1012,66 @@ fn place(onset: &[f32], beats: &[usize], period: f64) -> (Vec<f64>, usize) {
     // not an anchor either: each is checked against the line its strong
     // neighbours, four either side, draw through the beats.
     let tolerance = (0.035 * FPS).max(0.08 * period);
-    let anchors: Vec<usize> = (0..strong.len())
-        .filter(|&at| {
+    // Where the line through `points`, (beat, frame), falls at beat `index`:
+    // none through fewer than two.
+    let line_at = |points: &[(f64, f64)], index: f64| -> Option<f64> {
+        if points.len() < 2 {
+            return None;
+        }
+        let count = points.len() as f64;
+        let mean_x = points.iter().map(|(x, _)| x).sum::<f64>() / count;
+        let mean_y = points.iter().map(|(_, y)| y).sum::<f64>() / count;
+        let spread: f64 = points.iter().map(|(x, _)| (x - mean_x).powi(2)).sum();
+        if spread <= 0.0 {
+            return None;
+        }
+        let slope = points
+            .iter()
+            .map(|(x, y)| (x - mean_x) * (y - mean_y))
+            .sum::<f64>()
+            / spread;
+        Some(mean_y + slope * (index - mean_x))
+    };
+    let point = |other: usize| (strong[other] as f64, peaks[strong[other]].0);
+    let fits = |at: usize, expected: f64| (peaks[strong[at]].0 - expected).abs() <= tolerance;
+    let on_line: Vec<bool> = (0..strong.len())
+        .map(|at| {
             let from = at.saturating_sub(4);
             let to = (at + 5).min(strong.len());
-            let points: Vec<(f64, f64)> = (from..to)
-                .filter(|&other| other != at)
-                .map(|other| (strong[other] as f64, peaks[strong[other]].0))
-                .collect();
-            if points.len() < 2 {
+            let points: Vec<(f64, f64)> =
+                (from..to).filter(|&other| other != at).map(point).collect();
+            line_at(&points, strong[at] as f64).is_none_or(|expected| fits(at, expected))
+        })
+        .collect();
+    // A second look at a hit the line missed that is far stronger than the
+    // song's beats - the first hit of a drop, a crash on the one: it may
+    // carry on the line the anchors on one side of it draw, alone. After an
+    // intro the row ran off the beat in, one line through both sides misses
+    // the drop's first hit. A run of hits off the beat together - a
+    // syncopated bar - does not get in: its neighbours on the line are the
+    // anchors, and it is no louder than the beats.
+    let anchors: Vec<usize> = (0..strong.len())
+        .filter(|&at| {
+            if on_line[at] {
                 return true;
             }
-            let count = points.len() as f64;
-            let mean_x = points.iter().map(|(x, _)| x).sum::<f64>() / count;
-            let mean_y = points.iter().map(|(_, y)| y).sum::<f64>() / count;
-            let spread: f64 = points.iter().map(|(x, _)| (x - mean_x).powi(2)).sum();
-            if spread <= 0.0 {
-                return true;
+            if peaks[strong[at]].1 < DROP * typical {
+                return false;
             }
-            let slope = points
-                .iter()
-                .map(|(x, y)| (x - mean_x) * (y - mean_y))
-                .sum::<f64>()
-                / spread;
+            let near = |others: &mut dyn Iterator<Item = usize>| -> Vec<(f64, f64)> {
+                others
+                    .filter(|&other| on_line[other])
+                    .take(4)
+                    .map(point)
+                    .collect()
+            };
+            let before = near(&mut (at.saturating_sub(8)..at).rev());
+            let after = near(&mut (at + 1..(at + 9).min(strong.len())));
             let index = strong[at] as f64;
-            let expected = mean_y + slope * (index - mean_x);
-            (peaks[strong[at]].0 - expected).abs() <= tolerance
+            [line_at(&before, index), line_at(&after, index)]
+                .into_iter()
+                .flatten()
+                .any(|expected| fits(at, expected))
         })
         .map(|at| strong[at])
         .collect();

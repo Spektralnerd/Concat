@@ -332,7 +332,9 @@ export global Editor {
     /// count the grid - beats in a bar, a line every so many bars or
     /// beats, moved by milliseconds, kept off the lanes; move the counting
     /// on by so many beats; double (1) or halve (-1) the tempo; drop it.
+    /// Find them again as one steady row at a tempo typed in.
     callback beats-detect();
+    callback beats-detect-at(bpm: float);
     callback beats-cancel();
     callback beats-set(per-bar: int, every: int, bars: bool, offset: float, hidden: bool);
     callback beats-shift(beats: int);

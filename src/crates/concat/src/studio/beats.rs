@@ -56,6 +56,20 @@ impl Studio {
     /// grid already counted keeps how it is counted. One run a file at a
     /// time.
     pub fn beats_detect(&mut self) {
+        self.find_beats(None);
+    }
+
+    /// Finds the beats of the selected clip's sound again as one steady
+    /// row at about `bpm` beats per minute, typed in: for a song the finder
+    /// counts wrong, or whose beat it lets wander through an intro.
+    pub fn beats_detect_at(&mut self, bpm: f32) {
+        if bpm.is_finite() && bpm > 0.0 {
+            self.find_beats(Some(f64::from(bpm)));
+        }
+    }
+
+    /// See [`Studio::beats_detect`]: at `tempo` when it is given.
+    fn find_beats(&mut self, tempo: Option<f64>) {
         let Some(id) = self.sole_selection() else {
             return;
         };
@@ -72,7 +86,10 @@ impl Studio {
         self.beat_jobs.insert(media.id.clone(), 0.0);
         self.beat_cancels
             .insert(media.id.clone(), Arc::clone(&cancel));
-        log::info!("beats: looking for the beats of {}", media.name);
+        match tempo {
+            Some(bpm) => log::info!("beats: laying a steady {bpm:.2} BPM over {}", media.name),
+            None => log::info!("beats: looking for the beats of {}", media.name),
+        }
         let epoch = crate::host::project_epoch();
         let media_id = media.id.clone();
         let stream = clip.audio_stream.map(|stream| stream as usize);
@@ -84,6 +101,7 @@ impl Studio {
                     std::path::Path::new(&media.path),
                     stream,
                     media.duration,
+                    tempo,
                     &mut |fraction| {
                         // Every percent, not every chunk.
                         if fraction - last >= 0.01 {
