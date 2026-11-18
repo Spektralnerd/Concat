@@ -268,16 +268,21 @@ impl RelinkPane {
             items: slint::ModelRc::new(VecModel::from(
                 self.items
                     .iter()
-                    .map(|item| MissingMediaItem {
-                        id: item.id.clone().into(),
-                        name: item.name.clone().into(),
-                        folder: Path::new(&item.path)
-                            .parent()
-                            .map(|folder| shorten(&folder.to_string_lossy()))
-                            .unwrap_or_default()
-                            .into(),
-                        kind: kind_of(&item.id),
-                        clips: clips_of(&item.id),
+                    .map(|item| {
+                        let (head, tail) = name_parts(&item.name);
+                        MissingMediaItem {
+                            id: item.id.clone().into(),
+                            name: item.name.clone().into(),
+                            head: head.into(),
+                            tail: tail.into(),
+                            folder: Path::new(&item.path)
+                                .parent()
+                                .map(|folder| shorten(&folder.to_string_lossy()))
+                                .unwrap_or_default()
+                                .into(),
+                            kind: kind_of(&item.id),
+                            clips: clips_of(&item.id),
+                        }
                     })
                     .collect::<Vec<_>>(),
             )),
@@ -308,6 +313,41 @@ fn index_folder(folder: &Path, deep: bool) -> HashMap<String, PathBuf> {
         }
     }
     index
+}
+
+/// Fork: a name split for a row too narrow for all of it - the start, to
+/// give way, and the end, kept whole.
+///
+/// Names part company at their ends: fifty scenes cut from one film are
+/// fifty times the film's title and then "Scene-1183.mp4",
+/// "Scene-1184.mp4". Cut at its end, as text is, every row of them read
+/// the same on a phone. The end is the last word with the space before it,
+/// or, with no space near the end, the last sixteen letters; a short name
+/// is not split, and its end is empty.
+fn name_parts(name: &str) -> (String, String) {
+    /// Letters a name may have and still stand whole.
+    const SHORT: usize = 28;
+    /// How far from the end a space may be and still start the end.
+    const REACH: usize = 24;
+    /// The fewest letters after that space: a lone extension is no end.
+    const FEWEST: usize = 6;
+    /// The end of a name with no space near its end.
+    const LETTERS: usize = 16;
+    let letters: Vec<char> = name.chars().collect();
+    if letters.len() <= SHORT {
+        return (name.to_owned(), String::new());
+    }
+    let from = letters.len() - REACH;
+    let cut = letters[from..]
+        .iter()
+        .rposition(|letter| letter.is_whitespace())
+        .map(|at| from + at)
+        .filter(|&at| letters.len() - at > FEWEST)
+        .unwrap_or(letters.len() - LETTERS);
+    (
+        letters[..cut].iter().collect(),
+        letters[cut..].iter().collect(),
+    )
 }
 
 /// A path as a row shows it: the home folder as ~.
@@ -392,6 +432,42 @@ mod tests {
         pane.recheck(Vec::new());
         assert!(!pane.open);
         assert!(pane.items.is_empty());
+    }
+
+    #[test]
+    fn a_long_name_keeps_its_last_word_whole() {
+        let (head, tail) =
+            name_parts("Назад в будущее (Back to the Future) (1985) hybrid fs-Scene-1184.mp4");
+        assert_eq!(head, "Назад в будущее (Back to the Future) (1985) hybrid");
+        assert_eq!(tail, " fs-Scene-1184.mp4");
+    }
+
+    #[test]
+    fn a_short_name_stands_whole() {
+        assert_eq!(
+            name_parts("Wasted.mp3"),
+            ("Wasted.mp3".to_owned(), String::new())
+        );
+    }
+
+    #[test]
+    fn a_name_with_no_space_near_its_end_keeps_its_last_sixteen_letters() {
+        let (head, tail) = name_parts("C0001_take_after_take_after_take_20261118_120000.MP4");
+        assert_eq!(tail, "20261118_120000.MP4"[3..]);
+        assert_eq!(
+            format!("{head}{tail}"),
+            "C0001_take_after_take_after_take_20261118_120000.MP4"
+        );
+    }
+
+    #[test]
+    fn a_lone_extension_after_the_last_space_is_not_the_end() {
+        let (head, tail) = name_parts("tween-23b94937c8beb9cf-2x-ai copy of a clip a.mp4");
+        assert_eq!(tail.chars().count(), 16);
+        assert_eq!(
+            format!("{head}{tail}"),
+            "tween-23b94937c8beb9cf-2x-ai copy of a clip a.mp4"
+        );
     }
 
     #[test]

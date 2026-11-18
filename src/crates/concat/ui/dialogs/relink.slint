@@ -10,6 +10,13 @@ import { IconButton } from "../primitives/panel.slint";
 export struct MissingMediaItem {
     id: string,
     name: string,
+    /// Fork: the name in two parts, for a row too narrow for all of it.
+    /// The end is never cut, since that is where names part company -
+    /// "Scene-1183.mp4" and "Scene-1184.mp4" after the same film's title -
+    /// and the start gives way; `tail` is empty for a name short enough
+    /// to stand whole.
+    head: string,
+    tail: string,
     /// the folder it was in, the home folder as ~: the name is on the
     /// line above, so the whole path would only say it twice
     folder: string,
@@ -53,6 +60,8 @@ export component RelinkDialog inherits Modal {
     /// One row's height; the list is as tall as its rows up to five of
     /// them, and scrolls past that.
     property <length> row-h: 52px;
+    /// The list's height on a desk: its rows, up to five.
+    property <length> card-h: Math.min(list.preferred-height, root.row-h * 5) + 2px;
 
     VerticalLayout {
         padding: 16px;
@@ -63,23 +72,40 @@ export component RelinkDialog inherits Modal {
             color: Theme.fg-muted;
             font-size: Theme.fs;
             wrap: word-wrap;
+            // Fork: never the part that grows. Filling a phone's screen,
+            // this was the only thing that could, and it pushed the list
+            // down under the buttons, five rows of fifty showing.
+            vertical-stretch: 0;
+            max-height: self.preferred-height;
         }
 
+        // Fork: filling a phone's screen, the list takes the room the screen
+        // has rather than five rows of it, and scrolls past that; on a desk
+        // it is as tall as before.
         Rectangle {
-            height: Math.min(list.preferred-height, root.row-h * 5) + 2px;
+            min-height: Math.min(root.card-h, root.row-h * 3 + 2px);
+            preferred-height: root.card-h;
+            max-height: root.fill ? list.preferred-height + 2px : root.card-h;
+            vertical-stretch: 1;
             border-width: 1px;
             border-color: Theme.line;
             border-radius: Theme.r;
             clip: true;
 
-            Flickable {
+            flick := Flickable {
                 x: 1px;
                 y: 1px;
                 width: parent.width - 2px;
                 height: parent.height - 2px;
+                // Fork: as wide as it is, so it moves only up and down and a
+                // drag along a row is a scroll, not a sideways slip.
+                content-width: self.width;
                 content-height: list.preferred-height;
 
                 list := VerticalLayout {
+                    x: 0;
+                    y: 0;
+                    width: flick.width;
                     for item[index] in root.data.items: Rectangle {
                         height: root.row-h;
 
@@ -122,12 +148,35 @@ export component RelinkDialog inherits Modal {
                                 spacing: 2px;
                                 horizontal-stretch: 1;
 
-                                Text {
-                                    text: item.name;
-                                    color: Theme.fg;
-                                    font-size: Theme.fs;
-                                    font-weight: Theme.weight-title;
-                                    overflow: elide;
+                                // Fork: cut in the middle, not at the end.
+                                // The start gives way first and the end -
+                                // the part that tells a file from its
+                                // neighbours - stays whole; a name that
+                                // fits reads as one, with the room to
+                                // spare after it.
+                                HorizontalLayout {
+                                    Text {
+                                        text: item.head;
+                                        color: Theme.fg;
+                                        font-size: Theme.fs;
+                                        font-weight: Theme.weight-title;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                        max-width: self.preferred-width;
+                                    }
+
+                                    if item.tail != "": Text {
+                                        text: item.tail;
+                                        color: Theme.fg;
+                                        font-size: Theme.fs;
+                                        font-weight: Theme.weight-title;
+                                        horizontal-stretch: 0;
+                                        min-width: self.preferred-width;
+                                    }
+
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+                                    }
                                 }
 
                                 HorizontalLayout {
@@ -179,11 +228,20 @@ export component RelinkDialog inherits Modal {
         }
 
         ActionPair {
+            max-height: self.preferred-height;
             cancel-label: I18n.t("relink.notNow");
             action-label: I18n.t("relink.searchFolder");
             action-glyph: Glyph.folder;
             cancel => { root.dismiss(); }
             act => { root.relink-all(); }
+        }
+
+        // Fork: what a phone's screen has left once the list shows every
+        // row goes here, below the buttons, rather than into a gap above
+        // the list. A card on a desk is as tall as what it holds and has
+        // nothing left over.
+        if root.fill: Rectangle {
+            vertical-stretch: 0;
         }
     }
 }
