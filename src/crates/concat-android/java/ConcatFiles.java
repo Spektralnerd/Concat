@@ -71,6 +71,8 @@ public class ConcatFiles extends Fragment {
     private static final int REQUEST_MICROPHONE = 0xC0C5;
     /** Fork: the storage permission, before Android 11; see {@link #filesAccess}. */
     private static final int REQUEST_STORAGE = 0xC0C6;
+    /** Fork: the folder picker; see {@link #pickFolder}. */
+    private static final int REQUEST_TREE = 0xC0C7;
     private static final String TAG = "concat-files";
 
     /**
@@ -305,6 +307,117 @@ public class ConcatFiles extends Fragment {
         }
         File file = new File(path);
         return file.isFile() && file.canRead() ? file.getAbsolutePath() : null;
+    }
+
+    /**
+     * Fork: the system's folder picker, for where a project goes or which
+     * one opens - on the phone's storage, an SD card or a USB drive. The
+     * folder comes back through {@link #folderPicked} as a path the engine
+     * can write through, which takes Android 11 and the right to every
+     * file; without either it says why at once, and asks for the right
+     * when that is what is missing. From any thread.
+     */
+    public static void pickFolder(final Activity activity) {
+        if (Build.VERSION.SDK_INT < 30) {
+            answerFolderLater(activity, new String[] {"", "android"});
+            return;
+        }
+        if (!Environment.isExternalStorageManager()) {
+            filesAccess(activity, true);
+            answerFolderLater(activity, new String[] {"", "access"});
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                ConcatFiles fragment = new ConcatFiles();
+                activity.getFragmentManager()
+                        .beginTransaction()
+                        .add(fragment, TAG)
+                        .commitAllowingStateLoss();
+                activity.getFragmentManager().executePendingTransactions();
+                try {
+                    fragment.startActivityForResult(
+                            new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQUEST_TREE);
+                } catch (Exception e) {
+                    Log.w(TAG, "no folder picker: " + e);
+                    fragment.folderDone(null);
+                }
+            }
+        });
+    }
+
+    /**
+     * Fork: {@link #answerFolder} from the activity's thread, where a
+     * picker's answer comes from, rather than back into the caller.
+     */
+    private static void answerFolderLater(Activity activity, final String[] answer) {
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                answerFolder(answer);
+            }
+        });
+    }
+
+    /** Fork: {@link #folderPicked}, never throwing. */
+    private static void answerFolder(String[] answer) {
+        try {
+            folderPicked(answer);
+        } catch (Throwable e) {
+            Log.w(TAG, "the folder picked had nobody to go to: " + e);
+        }
+    }
+
+    /**
+     * Fork: the folder picker's answer, as a path - written to once, to be
+     * sure it can be - and the fragment gone.
+     */
+    private void folderDone(Uri tree) {
+        Activity activity = getActivity();
+        try {
+            getFragmentManager().beginTransaction().remove(this).commitAllowingStateLoss();
+        } catch (Exception ignored) {
+        }
+        if (activity == null || tree == null) {
+            answerFolder(new String[0]);
+            return;
+        }
+        String path = null;
+        try {
+            if ("com.android.externalstorage.documents".equals(tree.getAuthority())) {
+                String id = DocumentsContract.getTreeDocumentId(tree);
+                int colon = id.indexOf(':');
+                String head = colon < 0 ? id : id.substring(0, colon);
+                String rest = colon < 0 ? "" : id.substring(colon + 1);
+                File root = volumeRoot(activity, head);
+                if (root != null) {
+                    path = rest.isEmpty() ? root.getPath() : new File(root, rest).getPath();
+                }
+            }
+        } catch (Exception e) {
+            Log.i(TAG, "no path for the folder " + tree + ": " + e);
+        }
+        File folder = path == null ? null : new File(path);
+        if (folder == null || !folder.isDirectory() || !writable(folder)) {
+            Log.w(TAG, "the folder picked cannot be written through a path: " + tree + " -> " + path);
+            answerFolder(new String[] {"", "write"});
+            return;
+        }
+        answerFolder(new String[] {folder.getAbsolutePath()});
+    }
+
+    /** Fork: whether a file can be made in {@code folder}: one made and taken away. */
+    private static boolean writable(File folder) {
+        File probe = new File(folder, ".concat-write-test");
+        try {
+            if (probe.exists() || probe.createNewFile()) {
+                return probe.delete() || !probe.exists();
+            }
+        } catch (Exception e) {
+            Log.i(TAG, "cannot write in " + folder + ": " + e);
+        }
+        return false;
     }
 
     /**
@@ -956,6 +1069,14 @@ public class ConcatFiles extends Fragment {
     public static native void filesPicked(String[] paths);
 
     /**
+     * Fork, registered from Rust: the folder picked, as {path}; {} for
+     * none; or {"", why} when there is no path to give - "android" before
+     * Android 11, "access" without the right to every file (asked for),
+     * "write" for a folder no path reaches or one that cannot be written.
+     */
+    public static native void folderPicked(String[] answer);
+
+    /**
      * Fork, registered from Rust: how far the copy into the app has come.
      * {@code name} holds the file's display name (an array, so the Rust side
      * reads it the way it reads {@link #filesPicked}); {@code index} counts
@@ -1023,6 +1144,10 @@ public class ConcatFiles extends Fragment {
 
     @Override
     public void onActivityResult(int request, int result, Intent data) {
+        if (request == REQUEST_TREE) {
+            folderDone(result == Activity.RESULT_OK && data != null ? data.getData() : null);
+            return;
+        }
         if (request != REQUEST_PICK) {
             return;
         }

@@ -9,6 +9,19 @@
 //! asked. Nothing here is sent anywhere; it is written into the run's own
 //! log file like every other line.
 
+/// Fork: the Android API level the phone runs - 30 for Android 11 - or
+/// None off Android, or where the system does not say.
+pub fn android_api() -> Option<u32> {
+    #[cfg(target_os = "android")]
+    {
+        os::property("ro.build.version.sdk")?.trim().parse().ok()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        None
+    }
+}
+
 /// One line about the build: the version, the target, and the commit CI
 /// built it from - "local" for a build from a working tree.
 pub fn build() -> String {
@@ -279,7 +292,7 @@ mod os {
         )
     }
 
-    fn property(name: &str) -> Option<String> {
+    pub(super) fn property(name: &str) -> Option<String> {
         let name = std::ffi::CString::new(name).ok()?;
         let mut buf = [0u8; 92]; // PROP_VALUE_MAX
         // SAFETY: the buffer is PROP_VALUE_MAX bytes, all a value can be.

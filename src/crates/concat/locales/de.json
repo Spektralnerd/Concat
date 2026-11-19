@@ -1183,5 +1183,9 @@
   "reframe.refilledMany": "{0} Clips füllen das neue Bild. Einmal Rückgängig, und sie bleiben, wie sie waren.",
   "reframe.refilledOne": "1 Clip füllt das neue Bild. Einmal Rückgängig, und er bleibt, wie er war.",
   "settings.filesInPlace": "Dateien an ihrem Ort lassen",
-  "settings.filesInPlaceHint": "Clips, Musik und Bilder vom Telefon oder einer SD-Karte bleiben dort, und das Projekt zeigt auf sie statt auf eine Kopie in Concat. Android fragt vorher nach dem Zugriff auf alle Dateien. Verschobene oder gelöschte Dateien fehlen dann im Projekt."
+  "settings.filesInPlaceHint": "Clips, Musik und Bilder vom Telefon oder einer SD-Karte bleiben dort, und das Projekt zeigt auf sie statt auf eine Kopie in Concat. Android fragt vorher nach dem Zugriff auf alle Dateien. Verschobene oder gelöschte Dateien fehlen dann im Projekt.",
+  "start.folderNeedsAccess": "Erlaube Concat den Zugriff auf alle Dateien und wähle den Ordner dann noch einmal.",
+  "start.folderNeedsAndroid11": "Projekte auf einer SD-Karte oder USB-Platte gehen erst ab Android 11.",
+  "start.folderNotWritable": "In diesen Ordner kann Concat nicht schreiben. Wähle einen im Telefonspeicher, auf der SD-Karte oder einer USB-Platte.",
+  "start.locationDefault": "Standard"
 }

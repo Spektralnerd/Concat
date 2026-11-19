@@ -272,6 +272,7 @@ export component App inherits Window {
     callback start-name-edited(name: string);
     callback start-location-edited(path: string);
     callback start-browse();
+    callback start-location-default();
     callback start-aspect-changed(index: int);
     callback start-size-changed(index: int);
     callback start-rate-changed(index: int);
@@ -794,6 +795,7 @@ export component App inherits Window {
                 sort: root.start.sort;
                 busy: root.start.busy;
                 phone: root.phone;
+                folders: root.start.folders;
                 version: root.app-version;
                 can-drop: root.can-drop;
                 capcut: root.capcut;
@@ -983,6 +985,7 @@ export component App inherits Window {
         name-edited(name) => { root.start-name-edited(name); }
         location-edited(path) => { root.start-location-edited(path); }
         browse => { root.start-browse(); }
+        location-default => { root.start-location-default(); }
         aspect-changed(index) => { root.start-aspect-changed(index); }
         size-changed(index) => { root.start-size-changed(index); }
         rate-changed(index) => { root.start-rate-changed(index); }

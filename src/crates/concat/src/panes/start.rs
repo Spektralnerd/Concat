@@ -41,6 +41,9 @@ pub enum StartMsg {
     Browse,
     /// The folder the picker answered with.
     FolderChosen(String),
+    /// Fork: new projects back in the app's own folder, on a phone that
+    /// was keeping them elsewhere.
+    LocationDefault,
     Create,
     /// Open a project that already exists, picked from disk.
     Open,
@@ -309,16 +312,14 @@ impl StartPane {
             StartMsg::Browse => {
                 let title = t("start.whereShouldProjectFolder");
                 let current = self.location.clone();
-                crate::host::after_dialog(
-                    move || platform::pick_folder(&title, &current),
-                    |studio, _, _, folder| {
-                        studio.handle(crate::panes::Msg::Start(StartMsg::FolderChosen(
-                            folder.to_string_lossy().into_owned(),
-                        )));
-                    },
-                );
+                crate::host::pick_folder_then(title, current, |studio, _, _, folder| {
+                    studio.handle(crate::panes::Msg::Start(StartMsg::FolderChosen(
+                        folder.to_string_lossy().into_owned(),
+                    )));
+                });
             }
             StartMsg::FolderChosen(folder) => self.location = folder,
+            StartMsg::LocationDefault => self.location = default_location(),
             StartMsg::Create => self.create(studio),
             StartMsg::Open => self.open(),
             StartMsg::OpenChosen(folder) => Self::open_chosen(&folder, &self.location, studio),
@@ -503,12 +504,9 @@ impl StartPane {
     fn open(&self) {
         let title = t("start.openAProject");
         let current = self.location.clone();
-        crate::host::after_dialog(
-            move || platform::pick_folder(&title, &current),
-            |studio, _, _, folder| {
-                studio.handle(crate::panes::Msg::Start(StartMsg::OpenChosen(folder)));
-            },
-        );
+        crate::host::pick_folder_then(title, current, |studio, _, _, folder| {
+            studio.handle(crate::panes::Msg::Start(StartMsg::OpenChosen(folder)));
+        });
     }
 
     /// The folder Open was answered with: checked, then opened. A CapCut
@@ -602,10 +600,15 @@ impl StartPane {
     pub fn data(&self) -> StartData {
         let (width, height) = self.frame();
         let (num, den) = self.rate();
+        // Fork: a phone that can keep projects on an SD card or a USB drive
+        // shows where they go, and the way back to the app's own folder.
+        let folders = platform::project_folders();
         StartData {
             composing: self.composing,
             name: self.name.as_str().into(),
             location: self.location.as_str().into(),
+            folders,
+            location_custom: folders && self.location != default_location(),
             aspect: self.aspect as i32,
             size: self.size as i32,
             rate: self.rate as i32,

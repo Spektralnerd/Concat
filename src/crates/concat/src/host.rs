@@ -439,6 +439,36 @@ pub fn pick_files_then(
     }
 }
 
+/// Fork: [`after_dialog`] for a folder, on every platform. A desk's dialog
+/// is asked as before. An Android phone's picker is another screen, which
+/// answers later, as [`pick_files_then`]'s does; a folder it cannot give -
+/// before Android 11, without the right to every file, or one no path
+/// reaches - is said in a notice. `then` is not called for nothing chosen.
+pub fn pick_folder_then(
+    title: String,
+    start: String,
+    then: impl FnOnce(&mut Studio, &App, &Models, std::path::PathBuf) + Send + 'static,
+) {
+    if cfg!(target_os = "android") {
+        let _ = slint::invoke_from_event_loop(move || {
+            crate::platform::pick_folder_async(move |answer| match answer {
+                Ok(Some(folder)) => {
+                    on_ui(move |studio, app, models| then(studio, app, models, folder));
+                }
+                Ok(None) => {}
+                Err(why) => on_ui(move |studio, _, _| match why.as_str() {
+                    // The page for the right is up: a word on what next.
+                    "access" => studio.warn(&crate::i18n::t("start.folderNeedsAccess")),
+                    "android" => studio.notify(&crate::i18n::t("start.folderNeedsAndroid11"), true),
+                    _ => studio.notify(&crate::i18n::t("start.folderNotWritable"), true),
+                }),
+            });
+        });
+    } else {
+        after_dialog(move || crate::platform::pick_folder(&title, &start), then);
+    }
+}
+
 fn on_ui_gated(epoch: Option<u64>, body: impl FnOnce(&mut Studio, &App, &Models) + Send + 'static) {
     let _ = slint::invoke_from_event_loop(move || {
         Shell::with(|shell, app| {

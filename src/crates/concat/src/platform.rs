@@ -934,6 +934,52 @@ pub fn files_access(ask: bool) -> i32 {
     }
 }
 
+/// Fork: a phone's folder picker, for where a project goes and which one
+/// opens: the system's own, answering with the folder as a path the app
+/// can write through, None for nothing chosen, or why it could not give
+/// one - "android" (before Android 11), "access" (the right to every
+/// file, which it has just asked for) or "write" (a folder no path
+/// reaches). Installed by the phone's own crate; see
+/// [`install_folder_picker`].
+#[cfg(target_os = "android")]
+pub type FolderPicker =
+    Box<dyn Fn(Box<dyn FnOnce(Result<Option<PathBuf>, String>) + Send>) + Send + Sync>;
+
+#[cfg(target_os = "android")]
+static FOLDER_PICKER: std::sync::OnceLock<FolderPicker> = std::sync::OnceLock::new();
+
+/// Fork: installs a phone's folder picker. Once; a second call is ignored.
+#[cfg(target_os = "android")]
+pub fn install_folder_picker(picker: FolderPicker) {
+    let _ = FOLDER_PICKER.set(picker);
+}
+
+/// Fork: asks a phone for a folder and calls `on_picked` with the answer
+/// as [`FolderPicker`] gives it, from whichever thread the phone answers
+/// on. Anywhere else there is nothing to ask, and the answer is None at
+/// once; a desk has [`pick_folder`].
+pub fn pick_folder_async(on_picked: impl FnOnce(Result<Option<PathBuf>, String>) + Send + 'static) {
+    #[cfg(target_os = "android")]
+    {
+        match FOLDER_PICKER.get() {
+            Some(picker) => picker(Box::new(on_picked)),
+            None => on_picked(Ok(None)),
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        on_picked(Ok(None));
+    }
+}
+
+/// Fork: whether this phone can keep a project outside the app's own
+/// folder - on its storage, an SD card, a USB drive - and open one from
+/// there: Android 11 on, where the right to every file lets the app write
+/// through a path. A desk could always, and has its own row for it.
+pub fn project_folders() -> bool {
+    cfg!(target_os = "android") && concat_host::machine::android_api().is_some_and(|api| api >= 30)
+}
+
 /// Fork: Settings' word on picked media: used where they lie when the
 /// phone lets them be read there, or copied into the app.
 static FILES_IN_PLACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

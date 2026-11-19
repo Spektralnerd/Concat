@@ -200,6 +200,12 @@ mod java {
                     jni_str!("([Ljava/lang/String;JJ)V"),
                     super::picker::import_problem as *mut c_void,
                 ),
+                // Fork: the folder picker's answer.
+                jni::NativeMethod::from_raw_parts(
+                    jni_str!("folderPicked"),
+                    jni_str!("([Ljava/lang/String;)V"),
+                    super::picker::folder_picked as *mut c_void,
+                ),
             ]
         };
         // SAFETY: as above.
@@ -230,6 +236,12 @@ mod picker {
     /// The pick in flight, waiting for Java to answer.
     static PENDING: Mutex<Option<Picked>> = Mutex::new(None);
 
+    /// Fork: a folder picker's answer; see `concat::FolderPicker`.
+    type FolderPicked = Box<dyn FnOnce(Result<Option<PathBuf>, String>) + Send>;
+
+    /// Fork: the folder pick in flight, waiting for Java to answer.
+    static FOLDER_PENDING: Mutex<Option<FolderPicked>> = Mutex::new(None);
+
     /// Hands the window's crate a picker that runs on this activity.
     pub fn install(app: &AndroidApp) {
         // Fork: the import card's Cancel, which the copy in the Java hears
@@ -242,6 +254,36 @@ mod picker {
             });
             if let Err(error) = asked {
                 log::warn!("import: asking the copy to stop failed: {error}; it runs to its end");
+            }
+        }));
+        // Fork: the folder picker, for projects on an SD card or a USB
+        // drive.
+        let folders = app.clone();
+        concat::install_folder_picker(Box::new(move |on_picked| {
+            let previous = FOLDER_PENDING
+                .lock()
+                .map(|mut slot| slot.replace(on_picked))
+                .ok()
+                .flatten();
+            if let Some(previous) = previous {
+                previous(Ok(None));
+            }
+            let asked = super::java::with_class(&folders, |env, activity, class| {
+                env.call_static_method(
+                    class,
+                    jni_str!("pickFolder"),
+                    jni_sig!("(Landroid/app/Activity;)V"),
+                    &[activity.into()],
+                )?;
+                Ok(())
+            });
+            if let Err(error) = asked {
+                log::error!(
+                    "project: showing the folder picker failed: {error}; nothing was picked"
+                );
+                if let Some(pending) = FOLDER_PENDING.lock().ok().and_then(|mut slot| slot.take()) {
+                    pending(Ok(None));
+                }
             }
         }));
         let app = app.clone();
@@ -365,6 +407,26 @@ mod picker {
             log::warn!("import: reading what the copy said failed: {error}");
             Vec::new()
         })
+    }
+
+    /// Fork: `ConcatFiles.folderPicked`, on the activity's thread: {path},
+    /// {} for nothing, or {"", why}.
+    pub(super) unsafe extern "system" fn folder_picked(
+        _env: *mut sys::JNIEnv,
+        _class: sys::jclass,
+        answer: sys::jobjectArray,
+    ) {
+        // SAFETY: `answer` is the String[] Java handed this frame.
+        let answer = unsafe { strings_of(answer) };
+        let result = match answer.as_slice() {
+            [path] if !path.is_empty() => Ok(Some(PathBuf::from(path))),
+            [_, why] => Err(why.clone()),
+            _ => Ok(None),
+        };
+        match FOLDER_PENDING.lock().ok().and_then(|mut slot| slot.take()) {
+            Some(pending) => pending(result),
+            None => log::warn!("project: a folder was picked with nobody waiting for it"),
+        }
     }
 
     /// Fork: `ConcatFiles.importProgress`, on the thread the Java copies on.

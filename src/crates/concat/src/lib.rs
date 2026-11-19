@@ -71,6 +71,10 @@ pub use platform::{
 /// Fork: picked media read where they lie; see `platform::files_access`.
 #[cfg(target_os = "android")]
 pub use platform::{FilesAccess, files_in_place, install_files_access};
+/// Fork: the phone's folder picker, for projects on an SD card or a USB
+/// drive; see `platform::pick_folder_async`.
+#[cfg(target_os = "android")]
+pub use platform::{FolderPicker, install_folder_picker};
 #[cfg(target_os = "android")]
 pub use platform::{LinkOpener, install_link_opener};
 #[cfg(target_os = "android")]
@@ -859,6 +863,10 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     }));
     app.on_start_browse(on_window!(|state| {
         state.handle(Msg::Start(StartMsg::Browse));
+    }));
+    // Fork: back to the app's own folder for new projects.
+    app.on_start_location_default(on_window!(|state| {
+        state.handle(Msg::Start(StartMsg::LocationDefault));
     }));
     app.on_start_canvas_changed(on_window!(|state, colour: slint::Color| {
         state.handle(Msg::Start(StartMsg::CanvasChanged([

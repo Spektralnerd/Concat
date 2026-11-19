@@ -116,6 +116,13 @@ export struct StartData {
     composing: bool,
     name: string,
     location: string,
+    /// Fork: a phone that can keep projects outside the app's own folder -
+    /// on an SD card or a USB drive, Android 11 on - and open one from
+    /// there: the location row and Open show on it as on a desk.
+    folders: bool,
+    /// Fork: on such a phone, new projects go somewhere other than the
+    /// app's own folder, and the row offers the way back.
+    location-custom: bool,
     /// Index into `aspects`; the ratio behind it is Rust's.
     aspect: int,
     /// Index into `sizes`.
@@ -1903,6 +1910,9 @@ component NarrowHome inherits Rectangle {
     /// own folder, which the page already lists. See platform::pick_folder.
     /// https://github.com/jub0t/Concat/issues/222
     in property <bool> phone;
+    /// Fork: this phone can open a project folder from an SD card or a USB
+    /// drive, so it has Open after all.
+    in property <bool> folders;
     in property <bool> capcut;
 
     callback compose();
@@ -1951,7 +1961,7 @@ component NarrowHome inherits Rectangle {
                     wrap: word-wrap;
                 }
 
-                if !root.phone: VerticalLayout {
+                if !root.phone || root.folders: VerticalLayout {
                     alignment: center;
                     BarAction {
                         glyph: Glyph.folder;
@@ -2124,6 +2134,8 @@ export component StartScreen inherits Rectangle {
     /// A file can be dragged in from the system here.
     in property <bool> can-drop;
     in property <bool> phone;
+    /// Fork: see NarrowHome's.
+    in property <bool> folders;
     /// CapCut has drafts on this machine.
     in property <bool> capcut;
 
@@ -2181,6 +2193,7 @@ export component StartScreen inherits Rectangle {
         busy: root.busy;
         version: root.version;
         phone: root.phone;
+        folders: root.folders;
         capcut: root.capcut;
         compose => { root.compose(); }
         open => { root.open(); }
@@ -2218,6 +2231,8 @@ export component NewProjectDialog inherits Modal {
     callback name-edited(name: string);
     callback location-edited(path: string);
     callback browse();
+    /// Fork: new projects back in the app's own folder.
+    callback location-default();
     callback aspect-changed(index: int);
     callback size-changed(index: int);
     callback rate-changed(index: int);
@@ -2318,8 +2333,10 @@ export component NewProjectDialog inherits Modal {
 
         // A desk's question. A phone keeps its projects in the app's own
         // folder, as every phone editor does, and a path there is nothing
-        // anybody can browse to, so the row is not shown.
-        if !root.phone: FormRow {
+        // anybody can browse to, so the row is not shown - unless it can
+        // keep them on an SD card or a USB drive (fork), to finish the cut
+        // on another phone.
+        if !root.phone || root.data.folders: FormRow {
             label: I18n.upper("start.location");
             stacked: root.narrow;
 
@@ -2351,6 +2368,21 @@ export component NewProjectDialog inherits Modal {
                         clicked => {
                             Focus.release();
                             root.browse();
+                        }
+                    }
+                }
+
+                // Fork: the way back to the app's own folder, where the
+                // picker cannot go.
+                if root.data.location-custom: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    LinkButton {
+                        label: I18n.t("start.locationDefault");
+                        enabled: !root.data.busy;
+                        clicked => {
+                            Focus.release();
+                            root.location-default();
                         }
                     }
                 }
