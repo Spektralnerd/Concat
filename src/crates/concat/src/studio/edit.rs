@@ -95,6 +95,11 @@ impl Studio {
                 }
             }
             Some(Confirm::DeleteLeftovers { files, .. }) => self.imports_delete(files),
+            Some(Confirm::LocateAnyway { id, path, .. }) => {
+                self.handle(crate::panes::Msg::Relink(
+                    crate::panes::relink::RelinkMsg::LocatedAnyway(id, path),
+                ));
+            }
             Some(Confirm::QuitWithoutSaving { .. }) => {
                 crate::closing("by Quit without saving");
                 log::warn!(
@@ -168,6 +173,35 @@ impl Studio {
                     title: t("cleanup.title").into(),
                     message: message.into(),
                     action: t("common.delete").into(),
+                    ..Default::default()
+                }
+            }
+            Confirm::LocateAnyway {
+                name, path, unlike, ..
+            } => {
+                use crate::panes::relink::{Unlike, length};
+                let picked = path
+                    .file_name()
+                    .map(|file| file.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let message = match unlike {
+                    Unlike::NoPicture => tf("relink.unlikeNoPicture", &[&picked, name]),
+                    Unlike::NoSound => tf("relink.unlikeNoSound", &[&picked, name]),
+                    Unlike::Length {
+                        picked: picked_length,
+                        wanted,
+                    } => tf(
+                        "relink.unlikeLength",
+                        &[&picked, name, &length(*picked_length), &length(*wanted)],
+                    ),
+                };
+                crate::ui::ConfirmData {
+                    open: true,
+                    title: t("relink.unlikeTitle").into(),
+                    message: message.into(),
+                    action: t("relink.linkAnyway").into(),
+                    calm: true,
+                    glyph: crate::ui::Glyph::Link,
                     ..Default::default()
                 }
             }

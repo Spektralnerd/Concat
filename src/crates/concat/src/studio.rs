@@ -2879,6 +2879,15 @@ pub enum Confirm {
         files: Vec<std::path::PathBuf>,
         bytes: u64,
     },
+    /// Fork: linking the missing file `id`, called `name`, to the file at
+    /// `path` picked by hand, though it is `unlike` it - a song for a
+    /// scene, or another length.
+    LocateAnyway {
+        id: String,
+        name: String,
+        path: std::path::PathBuf,
+        unlike: crate::panes::relink::Unlike,
+    },
 }
 
 /// One clip on the clipboard: the clip as it was when copied, the row of

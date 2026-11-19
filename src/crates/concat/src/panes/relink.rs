@@ -33,6 +33,9 @@ pub enum RelinkMsg {
     /// The file the picker answered with for that one: it, whatever it
     /// is called now, and its folder searched for the rest.
     Located(String, PathBuf),
+    /// Fork: that file again, after the question whether it is the right
+    /// one was answered yes.
+    LocatedAnyway(String, PathBuf),
     /// Take one missing file out of the project, with the clips that use
     /// it, so it is never asked after again. One undo brings both back.
     Remove(String),
@@ -83,6 +86,7 @@ impl RelinkPane {
                 });
             }
             RelinkMsg::Located(id, path) => self.located(studio, &id, path),
+            RelinkMsg::LocatedAnyway(id, path) => self.link(studio, &id, path),
             RelinkMsg::Remove(id) => self.remove(studio, &id),
             RelinkMsg::Dismiss => self.dismiss(),
         }
@@ -172,7 +176,35 @@ impl RelinkPane {
     /// files are usually missing together - a folder moved, a drive
     /// renamed - so the folder it was found in is looked in, at its own
     /// level, for the rest, as the folder search would.
+    ///
+    /// Fork: a file that plainly is not the one missing - a song picked
+    /// for a video, which then played its album cover as the picture, or a
+    /// scene seconds longer than the one it stands in for - is asked about
+    /// first; the answer can still be yes.
     fn located(&mut self, studio: &mut Studio, id: &str, path: PathBuf) {
+        let Some(name) = self
+            .items
+            .iter()
+            .find(|item| item.id == id)
+            .map(|item| item.name.clone())
+        else {
+            return;
+        };
+        if let Some(unlike) = unlike_picked(studio, id, &path) {
+            studio.confirm = Some(crate::studio::Confirm::LocateAnyway {
+                id: id.to_owned(),
+                name,
+                path,
+                unlike,
+            });
+            return;
+        }
+        self.link(studio, id, path);
+    }
+
+    /// The file picked for `id` taken as it, and its folder searched for
+    /// the rest.
+    fn link(&mut self, studio: &mut Studio, id: &str, path: PathBuf) {
         if !self.items.iter().any(|item| item.id == id) {
             return;
         }
@@ -315,6 +347,72 @@ fn index_folder(folder: &Path, deep: bool) -> HashMap<String, PathBuf> {
     index
 }
 
+/// Fork: how a file picked by hand differs from the missing one it is
+/// picked for, when it differs enough to be the wrong file.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Unlike {
+    /// The missing file was a video or a still and this one has no
+    /// picture: it is sound alone. A song's album cover is no picture of
+    /// its own here, as on import; taken as one, it played as the scene.
+    NoPicture,
+    /// The missing file was sound and this one has none.
+    NoSound,
+    /// Both have a length, and they are further apart than a copy of the
+    /// same file ever is.
+    Length { picked: f64, wanted: f64 },
+}
+
+/// How the picked file at `path` differs from the missing item `id`, if
+/// it does; nothing when it fits, or when it cannot be read - that is for
+/// the preview to say, as it always has.
+fn unlike_picked(studio: &Studio, id: &str, path: &Path) -> Option<Unlike> {
+    let item = studio.project().media.iter().find(|item| item.id == id)?;
+    let summary = concat_host::media::probe(&path.to_string_lossy()).ok()?;
+    let picture = summary.video.is_some() || summary.kind == MediaKind::Image;
+    unlike(
+        item.kind,
+        item.duration,
+        picture,
+        summary.audio.is_some(),
+        summary.duration,
+    )
+}
+
+/// The comparison itself. Lengths may part by half a second, or by two in
+/// a hundred of a long file: a copy wrapped or encoded again can gain or
+/// lose a frame or two, while another scene of the same film is seconds
+/// off. A still has no length of its own to compare.
+fn unlike(
+    wanted_kind: MediaKind,
+    wanted: Option<f64>,
+    picture: bool,
+    sound: bool,
+    picked: Option<f64>,
+) -> Option<Unlike> {
+    match wanted_kind {
+        MediaKind::Video | MediaKind::Image if !picture => return Some(Unlike::NoPicture),
+        MediaKind::Audio if !sound => return Some(Unlike::NoSound),
+        MediaKind::Image => return None,
+        _ => {}
+    }
+    let (wanted, picked) = (wanted?, picked?);
+    if wanted <= 0.0 || picked <= 0.0 {
+        return None;
+    }
+    let slack = (wanted * 0.02).max(0.5);
+    ((picked - wanted).abs() > slack).then_some(Unlike::Length { picked, wanted })
+}
+
+/// A file's length as the question says it: tenths of a second for a
+/// scene, a running time for anything a minute or longer.
+pub fn length(seconds: f64) -> String {
+    if seconds < 59.95 {
+        tf("format.seconds", &[&format!("{seconds:.1}")])
+    } else {
+        crate::format::running_time(seconds)
+    }
+}
+
 /// Fork: a name split for a row too narrow for all of it - the start, to
 /// give way, and the end, kept whole.
 ///
@@ -432,6 +530,68 @@ mod tests {
         pane.recheck(Vec::new());
         assert!(!pane.open);
         assert!(pane.items.is_empty());
+    }
+
+    #[test]
+    fn a_song_picked_for_a_video_is_asked_about() {
+        // Scene-1184, 8.1 s, linked to a four-minute MP3 whose only
+        // picture is its cover: the probe says it has none.
+        assert_eq!(
+            unlike(MediaKind::Video, Some(8.09), false, true, Some(258.0)),
+            Some(Unlike::NoPicture)
+        );
+    }
+
+    #[test]
+    fn another_scene_of_another_length_is_asked_about() {
+        // Scene-007, 11.3 s, picked for Scene-1184, 8.1 s.
+        assert_eq!(
+            unlike(MediaKind::Video, Some(8.09), true, false, Some(11.26)),
+            Some(Unlike::Length {
+                picked: 11.26,
+                wanted: 8.09
+            })
+        );
+    }
+
+    #[test]
+    fn the_same_file_or_a_copy_a_frame_off_links_without_a_question() {
+        assert_eq!(
+            unlike(MediaKind::Video, Some(8.09), true, false, Some(8.09)),
+            None
+        );
+        assert_eq!(
+            unlike(MediaKind::Video, Some(8.09), true, false, Some(8.13)),
+            None
+        );
+        // two in a hundred of a long file
+        assert_eq!(
+            unlike(MediaKind::Video, Some(6960.0), true, true, Some(6990.0)),
+            None
+        );
+    }
+
+    #[test]
+    fn sound_for_sound_and_a_still_for_a_still() {
+        assert_eq!(
+            unlike(MediaKind::Audio, Some(258.0), false, false, Some(258.0)),
+            Some(Unlike::NoSound)
+        );
+        assert_eq!(
+            unlike(MediaKind::Audio, Some(258.0), true, true, Some(258.1)),
+            None
+        );
+        assert_eq!(unlike(MediaKind::Image, None, true, false, None), None);
+        assert_eq!(
+            unlike(MediaKind::Image, None, false, true, Some(3.0)),
+            Some(Unlike::NoPicture)
+        );
+    }
+
+    #[test]
+    fn a_file_without_a_length_is_not_judged_by_it() {
+        assert_eq!(unlike(MediaKind::Video, None, true, false, Some(3.0)), None);
+        assert_eq!(unlike(MediaKind::Video, Some(3.0), true, false, None), None);
     }
 
     #[test]
