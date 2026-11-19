@@ -68,6 +68,9 @@ pub use concat_host::awake::install as install_awake;
 pub use platform::{
     ExportPublisher, FilePicker, PickKinds, install_export_publisher, install_file_picker,
 };
+/// Fork: picked media read where they lie; see `platform::files_access`.
+#[cfg(target_os = "android")]
+pub use platform::{FilesAccess, files_in_place, install_files_access};
 #[cfg(target_os = "android")]
 pub use platform::{LinkOpener, install_link_opener};
 #[cfg(target_os = "android")]
@@ -2360,6 +2363,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     }));
     app.on_settings_proxies_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Settings(SettingsMsg::ProxiesChanged(on)));
+    }));
+    app.on_settings_files_in_place_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::FilesInPlaceChanged(on)));
     }));
     app.on_settings_remember_layout_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Settings(SettingsMsg::RememberLayoutChanged(on)));

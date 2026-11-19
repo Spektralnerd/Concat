@@ -3098,6 +3098,8 @@ impl Studio {
     /// read off disk.
     pub fn new(host: Host) -> Self {
         let prefs = Preferences::load(&host.dirs);
+        // Fork: picked media used where they lie, as Settings last said.
+        crate::platform::set_files_in_place(prefs.files_in_place);
         // The panels where the last session left them, while Settings says
         // to; a saved dock this build cannot read is the default instead.
         let saved = prefs.layout.as_ref().filter(|_| prefs.remembers_layout());

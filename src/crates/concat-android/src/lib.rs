@@ -269,13 +269,18 @@ mod picker {
 
     fn pick(app: &AndroidApp, kinds: &concat::PickKinds) -> jni::errors::Result<()> {
         let types = mime_types(kinds).join(",");
+        // Fork: media are used where they lie when Settings says so and the
+        // phone lets them be read there. A subtitle, a font, a project's
+        // ZIP is copied as ever: small, read once, and the ZIP's copy is
+        // the one its import may delete.
+        let in_place = matches!(kinds, concat::PickKinds::Media { .. }) && concat::files_in_place();
         super::java::with_class(app, |env, activity, class| {
             let types = env.new_string(&types)?;
             env.call_static_method(
                 class,
                 jni_str!("pick"),
-                jni_sig!("(Landroid/app/Activity;Ljava/lang/String;)V"),
-                &[activity.into(), (&types).into()],
+                jni_sig!("(Landroid/app/Activity;Ljava/lang/String;Z)V"),
+                &[activity.into(), (&types).into(), in_place.into()],
             )?;
             Ok(())
         })
@@ -577,6 +582,38 @@ mod microphone {
     }
 }
 
+/// Fork: picked media read where they lie - the phone's storage, an SD
+/// card - instead of a copy in the app: whether the phone lets the app do
+/// that, and the asking; see ConcatFiles.filesAccess.
+#[cfg(target_os = "android")]
+mod files_access {
+    use jni::{jni_sig, jni_str};
+    use slint::android::AndroidApp;
+
+    /// Hands the window's crate the way to ask.
+    pub fn install(app: &AndroidApp) {
+        let app = app.clone();
+        concat::install_files_access(Box::new(move |ask| {
+            super::java::with_class(&app, |env, activity, class| {
+                env.call_static_method(
+                    class,
+                    jni_str!("filesAccess"),
+                    jni_sig!("(Landroid/app/Activity;Z)I"),
+                    &[activity.into(), ask.into()],
+                )?
+                .i()
+            })
+            .unwrap_or_else(|error| {
+                // Not knowing is a no: picks are copied, as they always were.
+                log::warn!(
+                    "import: asking whether files can be read where they lie failed: {error}; they are copied"
+                );
+                0
+            })
+        }));
+    }
+}
+
 /// The browser, for the launch screen's guides and links: an ACTION_VIEW
 /// intent through the activity, which the Java sends.
 #[cfg(target_os = "android")]
@@ -773,6 +810,7 @@ fn android_main(app: slint::android::AndroidApp) {
     picker::install(&app);
     publisher::install(&app);
     microphone::install(&app);
+    files_access::install(&app);
     links::install(&app);
     awake::install(&app);
     log_file::install(&app);

@@ -57,6 +57,9 @@ pub enum SettingsMsg {
     PlayheadStopsChanged(bool),
     /// The proxies switch: whether large files get a smaller copy to play.
     ProxiesChanged(bool),
+    /// Fork: the in-place switch: whether media picked on a phone are used
+    /// where they lie instead of copied into the app.
+    FilesInPlaceChanged(bool),
     /// The remember-layout switch: whether a launch opens on the last
     /// session's panels and window size.
     RememberLayoutChanged(bool),
@@ -396,6 +399,18 @@ impl SettingsPane {
                 // On, the media already in the project gets its proxies
                 // straight away (refresh_art's stamp holds the switch);
                 // off, playback reads the files from the next frame.
+            }
+            SettingsMsg::FilesInPlaceChanged(on) => {
+                log::info!("settings: Files where they lie {}", on_off(on));
+                studio.prefs.files_in_place = on;
+                studio.prefs.save(&studio.host.dirs);
+                crate::platform::set_files_in_place(on);
+                // On and not yet allowed: the phone's own page or question.
+                // The switch shows on once the phone says yes, which it
+                // reads the next time Settings is drawn.
+                if on && crate::platform::files_access(false) == 1 {
+                    crate::platform::files_access(true);
+                }
             }
             SettingsMsg::RememberLayoutChanged(on) => {
                 log::info!("settings: Remember layout {}", on_off(on));
@@ -989,6 +1004,13 @@ impl SettingsPane {
 
     /// The sheet as Slint shows it.
     pub fn data(&self, studio: &Studio) -> SettingsData {
+        // Fork: asked of the phone only while the sheet is up, so a yes
+        // given on the phone's own page shows as soon as it is back.
+        let files_access = if self.open {
+            crate::platform::files_access(false)
+        } else {
+            0
+        };
         SettingsData {
             open: self.open,
             tab: self.tab,
@@ -1017,6 +1039,8 @@ impl SettingsPane {
                 .unwrap_or(2) as i32,
             playhead_stops: self.playhead_stops,
             proxies: studio.prefs.proxies,
+            files_in_place: studio.prefs.files_in_place && files_access == 2,
+            files_in_place_switchable: files_access > 0,
             remember_layout: studio.prefs.remembers_layout(),
             layout_switchable: !crate::platform::phone(),
             gpu: !studio.prefs.draws_in_software(),

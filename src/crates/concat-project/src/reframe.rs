@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// SPDX-FileCopyrightText: 2026 Jareer Abdullah and Concat contributors
+// SPDX-FileCopyrightText: 2026 Spektralnerd (fork of jub0t/Concat)
 
 //! Fork: the pictures that covered a timeline's frame, carried to a new
 //! frame so they cover that one too.

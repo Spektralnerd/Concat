@@ -77,6 +77,12 @@ export struct SettingsData {
     playhead-stops: bool,
     /// large files get a smaller copy for playback
     proxies: bool,
+    /// Fork: media picked on the phone are used where they lie (and the
+    /// phone lets them be read there)
+    files-in-place: bool,
+    /// Fork: this phone can read picked files where they lie at all:
+    /// Android, but not Android 10
+    files-in-place-switchable: bool,
     /// a launch opens with the panels and the window where the last
     /// session left them
     remember-layout: bool,
@@ -678,6 +684,7 @@ export component SettingsDialog inherits Sheet {
     callback scale-changed(index: int);
     callback playhead-stops-changed(on: bool);
     callback proxies-changed(on: bool);
+    callback files-in-place-changed(on: bool);
     callback remember-layout-changed(on: bool);
     callback gpu-changed(on: bool);
     callback magnetic-changed(on: bool);
@@ -1029,6 +1036,21 @@ export component SettingsDialog inherits Sheet {
                     on: root.data.proxies;
                     open: false;
                     switched(on) => { root.proxies-changed(on); }
+                }
+
+                // Fork: on, a clip, a song or a picture picked from the
+                // phone's storage or an SD card stays there and the project
+                // points at it, instead of a copy in the app. Android asks
+                // for the right to read every file first; until it says yes
+                // the switch stays off and picks are copied as before.
+                if root.data.files-in-place-switchable: DialogSection {
+                    ruled: false;
+                    title: I18n.t("settings.filesInPlace");
+                    hint: I18n.t("settings.filesInPlaceHint");
+                    switchable: true;
+                    on: root.data.files-in-place;
+                    open: false;
+                    switched(on) => { root.files-in-place-changed(on); }
                 }
 
                 // On, the next launch opens with the panels where this one

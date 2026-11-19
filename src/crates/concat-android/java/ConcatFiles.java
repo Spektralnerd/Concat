@@ -21,8 +21,12 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Log;
 
 import java.io.File;
@@ -65,6 +69,8 @@ import java.util.List;
 public class ConcatFiles extends Fragment {
     private static final int REQUEST_PICK = 0xC0C4;
     private static final int REQUEST_MICROPHONE = 0xC0C5;
+    /** Fork: the storage permission, before Android 11; see {@link #filesAccess}. */
+    private static final int REQUEST_STORAGE = 0xC0C6;
     private static final String TAG = "concat-files";
 
     /**
@@ -77,6 +83,12 @@ public class ConcatFiles extends Fragment {
     private static final long PROGRESS_EVERY_MS = 200;
     /** Fork: set by {@link #cancelImport}; the copy stops at its next chunk. */
     private static volatile boolean cancelled;
+
+    /**
+     * Fork: this pick's files are used where they lie when they can be
+     * read there, rather than copied in; see {@link #pick(Activity, String, boolean)}.
+     */
+    private boolean inPlace;
 
     /**
      * Where a finished export goes, under the phone's storage: Movies/Concat.
@@ -177,6 +189,171 @@ public class ConcatFiles extends Fragment {
         file.delete();
         // The store may have renamed it: a second "name.mp4" is "name (1).mp4".
         return new String[] {folder + "/" + displayName(activity, uri), null};
+    }
+
+    /**
+     * Fork: whether picked files can be read where they lie - on the
+     * phone's storage or an SD card - instead of copied in: 2 when they
+     * can, 1 when they could once allowed, 0 when this phone cannot at all
+     * (Android 10, which keeps an app out of every file it did not make
+     * unless its manifest asks for the old storage). From Android 11 that
+     * is the right to read every file, which only the system's own page
+     * grants; before it, the storage permission. With {@code ask} and 1,
+     * the page or the question goes up and 1 comes back at once; the
+     * answer is read the next time this is asked. From any thread.
+     */
+    public static int filesAccess(final Activity activity, boolean ask) {
+        int access = filesAccessNow(activity);
+        if (access != 1 || !ask) {
+            return access;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    try {
+                        activity.startActivity(new Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:" + activity.getPackageName())));
+                    } catch (Exception e) {
+                        // A phone without the page for one app has the list.
+                        try {
+                            activity.startActivity(new Intent(
+                                    Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                        } catch (Exception again) {
+                            Log.w(TAG, "no page grants reading every file: " + again);
+                        }
+                    }
+                } else {
+                    activity.requestPermissions(
+                            new String[] {Manifest.permission.READ_EXTERNAL_STORAGE},
+                            REQUEST_STORAGE);
+                }
+            }
+        });
+        return 1;
+    }
+
+    /** Fork: {@link #filesAccess} without asking. */
+    private static int filesAccessNow(Activity activity) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            return Environment.isExternalStorageManager() ? 2 : 1;
+        }
+        if (Build.VERSION.SDK_INT == 29 && !Environment.isExternalStorageLegacy()) {
+            return 0;
+        }
+        return activity.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED ? 2 : 1;
+    }
+
+    /**
+     * Fork: the path of the file a picked {@code uri} names, when it is a
+     * plain file the engine can open there: one from the phone's storage
+     * or an SD card, the media store or the downloads, with reading it
+     * allowed ({@link #filesAccess}). Null for anything else - a file in
+     * the cloud, or one another app hands over - which is copied in.
+     */
+    private static String whereItLies(Activity activity, Uri uri) {
+        if (filesAccessNow(activity) != 2) {
+            return null;
+        }
+        String path = null;
+        try {
+            String authority = uri.getAuthority();
+            if ("file".equals(uri.getScheme())) {
+                path = uri.getPath();
+            } else if (DocumentsContract.isDocumentUri(activity, uri)) {
+                String id = DocumentsContract.getDocumentId(uri);
+                int colon = id.indexOf(':');
+                String head = colon < 0 ? id : id.substring(0, colon);
+                String rest = colon < 0 ? "" : id.substring(colon + 1);
+                if ("com.android.externalstorage.documents".equals(authority)) {
+                    File root = volumeRoot(activity, head);
+                    if (root != null) {
+                        path = new File(root, rest).getPath();
+                    }
+                } else if ("com.android.providers.media.documents".equals(authority)) {
+                    Uri collection;
+                    if ("video".equals(head)) {
+                        collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+                    } else if ("audio".equals(head)) {
+                        collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                    } else if ("image".equals(head)) {
+                        collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                    } else {
+                        collection = MediaStore.Files.getContentUri("external");
+                    }
+                    path = dataOf(activity,
+                            ContentUris.withAppendedId(collection, Long.parseLong(rest)));
+                } else if ("com.android.providers.downloads.documents".equals(authority)) {
+                    if ("raw".equals(head)) {
+                        path = rest;
+                    } else if ("msf".equals(head)) {
+                        path = dataOf(activity, ContentUris.withAppendedId(
+                                MediaStore.Files.getContentUri("external"), Long.parseLong(rest)));
+                    }
+                }
+            } else if ("media".equals(authority)) {
+                path = dataOf(activity, uri);
+            }
+        } catch (Exception e) {
+            Log.i(TAG, "no path for " + uri + ": " + e);
+            path = null;
+        }
+        if (path == null || path.isEmpty()) {
+            return null;
+        }
+        File file = new File(path);
+        return file.isFile() && file.canRead() ? file.getAbsolutePath() : null;
+    }
+
+    /**
+     * Fork: the folder a storage volume's documents are under, from the
+     * name the documents provider gives it: "primary" for the phone's own
+     * storage, "home" for its Documents, an SD card's id otherwise.
+     */
+    private static File volumeRoot(Activity activity, String volume) {
+        if ("primary".equalsIgnoreCase(volume)) {
+            return Environment.getExternalStorageDirectory();
+        }
+        if ("home".equalsIgnoreCase(volume)) {
+            return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                StorageManager storage =
+                        (StorageManager) activity.getSystemService(Context.STORAGE_SERVICE);
+                for (StorageVolume each : storage.getStorageVolumes()) {
+                    if (volume.equalsIgnoreCase(each.getUuid()) && each.getDirectory() != null) {
+                        return each.getDirectory();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        File guess = new File("/storage/" + volume);
+        return guess.isDirectory() ? guess : null;
+    }
+
+    /** Fork: the media store's path for one of its rows, or null. */
+    private static String dataOf(Activity activity, Uri uri) {
+        Cursor cursor = null;
+        try {
+            cursor = activity.getContentResolver().query(
+                    uri, new String[] {MediaStore.MediaColumns.DATA}, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(MediaStore.MediaColumns.DATA);
+                if (column >= 0 && !cursor.isNull(column)) {
+                    return cursor.getString(column);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return null;
     }
 
     /**
@@ -806,10 +983,22 @@ public class ConcatFiles extends Fragment {
      * any thread; the fragment is added on the UI thread.
      */
     public static void pick(final Activity activity, final String types) {
+        pick(activity, types, false);
+    }
+
+    /**
+     * Fork: {@link #pick(Activity, String)}, and with {@code inPlace} each
+     * picked file that can be read where it lies - on the phone's storage
+     * or an SD card, with {@link #filesAccess} allowed - is handed over at
+     * its own path instead of copied into the app. What cannot be read
+     * there, a file in the cloud or from another app, is copied as before.
+     */
+    public static void pick(final Activity activity, final String types, final boolean inPlace) {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 ConcatFiles fragment = new ConcatFiles();
+                fragment.inPlace = inPlace;
                 activity.getFragmentManager()
                         .beginTransaction()
                         .add(fragment, TAG)
@@ -865,6 +1054,7 @@ public class ConcatFiles extends Fragment {
             filesPicked(new String[0]);
             return;
         }
+        final boolean keepInPlace = inPlace;
         // Off the UI thread: a video is big and the copy takes a while.
         new Thread(new Runnable() {
             @Override
@@ -877,6 +1067,17 @@ public class ConcatFiles extends Fragment {
                 for (int index = 0; index < count && !cancelled; index++) {
                     Uri uri = uris.get(index);
                     String name = displayName(activity, uri);
+                    // Fork: a file that can be read where it lies is used
+                    // there - nothing copied, no room taken.
+                    if (keepInPlace) {
+                        String here = whereItLies(activity, uri);
+                        if (here != null) {
+                            Log.i(TAG, "using " + name + " where it lies: " + here);
+                            paths.add(here);
+                            continue;
+                        }
+                        Log.i(TAG, "copying " + name + ": it cannot be read where it lies");
+                    }
                     long size = sizeOf(activity, uri);
                     // Fork: a file that cannot fit is not started. Copied
                     // anyway it filled the phone to the brim and failed at

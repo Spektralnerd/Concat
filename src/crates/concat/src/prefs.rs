@@ -93,6 +93,12 @@ pub struct Preferences {
     /// may not take (an HDR one opened NVENC first), and the person who
     /// wants one for smoother playback turns it on in Settings.
     pub proxies: bool,
+    /// Fork: on a phone, media picked from its storage or an SD card are
+    /// used where they lie instead of copied into the app, where the phone
+    /// lets the app read them there (Settings > General). Off by default:
+    /// the copy is the one a project can count on keeping, and Android
+    /// asks for the right to read every file before it lets the app in.
+    pub files_in_place: bool,
     /// Drawing in software: the window and the compositor on the
     /// platform's software rasteriser (WARP, lavapipe) instead of the GPU,
     /// as the person chose in Settings > General or with `concat

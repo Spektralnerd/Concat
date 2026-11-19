@@ -901,6 +901,55 @@ pub fn install_microphone_access(access: MicrophoneAccess) {
     let _ = MICROPHONE_ACCESS.set(access);
 }
 
+/// Fork: whether a phone lets the app read a picked file where it lies -
+/// its storage, an SD card - instead of a copy in the app: 2 when it does,
+/// 1 when it would once allowed, 0 when it cannot at all. Asked with true,
+/// a 1 puts the system's page or question up and comes back at once; the
+/// answer is read the next time this is asked. Installed by the phone's
+/// own crate; see [`install_files_access`].
+#[cfg(target_os = "android")]
+pub type FilesAccess = Box<dyn Fn(bool) -> i32 + Send + Sync>;
+
+#[cfg(target_os = "android")]
+static FILES_ACCESS: std::sync::OnceLock<FilesAccess> = std::sync::OnceLock::new();
+
+/// Fork: installs how a phone is asked to let picked files be read where
+/// they lie. Once; a second call is ignored.
+#[cfg(target_os = "android")]
+pub fn install_files_access(access: FilesAccess) {
+    let _ = FILES_ACCESS.set(access);
+}
+
+/// Fork: see [`FilesAccess`]. 0 where nothing is installed: a desk's
+/// picker hands over the file itself, and there is no switch to show.
+pub fn files_access(ask: bool) -> i32 {
+    #[cfg(target_os = "android")]
+    {
+        FILES_ACCESS.get().map_or(0, |access| access(ask))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = ask;
+        0
+    }
+}
+
+/// Fork: Settings' word on picked media: used where they lie when the
+/// phone lets them be read there, or copied into the app.
+static FILES_IN_PLACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Fork: whether a phone's picker hands media over where they lie; the
+/// phone's crate reads it at each pick.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn files_in_place() -> bool {
+    FILES_IN_PLACE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Fork: what [`files_in_place`] answers from now on.
+pub fn set_files_in_place(on: bool) {
+    FILES_IN_PLACE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Opens a web address in the browser, on a phone. Installed by the phone's
 /// own crate; see [`install_link_opener`].
 #[cfg(target_os = "android")]

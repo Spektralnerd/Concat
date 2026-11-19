@@ -69,6 +69,18 @@ name = "android.permission.INTERNET"
 [[package.metadata.android.uses_permission]]
 name = "android.permission.RECORD_AUDIO"
 
+# Fork: media picked from the phone's storage or an SD card used where
+# they lie, when Settings says so, instead of copied into the app. From
+# Android 11 that takes the right to read every file, which the person
+# grants on the system's own page...
+[[package.metadata.android.uses_permission]]
+name = "android.permission.MANAGE_EXTERNAL_STORAGE"
+
+# ...and before it the storage permission, asked while the app runs.
+[[package.metadata.android.uses_permission]]
+name = "android.permission.READ_EXTERNAL_STORAGE"
+max_sdk_version = 32
+
 [package.metadata.android.application]
 label = "Concat"
 icon = "@mipmap/ic_launcher"

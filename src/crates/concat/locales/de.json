@@ -1181,5 +1181,7 @@
   "phone.frameNow": "Jetzt: {0} · {1}",
   "phone.ownFrame": "Eigene Größe oder Bildrate…",
   "reframe.refilledMany": "{0} Clips füllen das neue Bild. Einmal Rückgängig, und sie bleiben, wie sie waren.",
-  "reframe.refilledOne": "1 Clip füllt das neue Bild. Einmal Rückgängig, und er bleibt, wie er war."
+  "reframe.refilledOne": "1 Clip füllt das neue Bild. Einmal Rückgängig, und er bleibt, wie er war.",
+  "settings.filesInPlace": "Dateien an ihrem Ort lassen",
+  "settings.filesInPlaceHint": "Clips, Musik und Bilder vom Telefon oder einer SD-Karte bleiben dort, und das Projekt zeigt auf sie statt auf eine Kopie in Concat. Android fragt vorher nach dem Zugriff auf alle Dateien. Verschobene oder gelöschte Dateien fehlen dann im Projekt."
 }

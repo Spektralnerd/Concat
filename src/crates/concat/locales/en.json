@@ -1200,5 +1200,7 @@
   "phone.frameNow": "Now: {0} · {1}",
   "phone.ownFrame": "Your own size or frame rate…",
   "reframe.refilledMany": "{0} clips fill the new frame. Undo once to leave them as they were.",
-  "reframe.refilledOne": "1 clip fills the new frame. Undo once to leave it as it was."
+  "reframe.refilledOne": "1 clip fills the new frame. Undo once to leave it as it was.",
+  "settings.filesInPlace": "Keep files where they are",
+  "settings.filesInPlaceHint": "Clips, songs and pictures picked from the phone or an SD card stay there, and the project points at them instead of a copy in Concat. Android asks for access to all files first. Moved or deleted files show up as missing."
 }
