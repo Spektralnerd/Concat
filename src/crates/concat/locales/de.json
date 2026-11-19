@@ -1176,5 +1176,10 @@
   "studio.smooth": "Flüssige Zeitlupe: {0}",
   "studio.smoothClipNowShows": "Der Clip zeigt jetzt die flüssige Fassung",
   "studio.smoothClipMoved": "Der Clip zeigt mehr vom Video, als die flüssige Kopie enthält; berechne sie neu",
-  "speedRamp.velocity": "Velocity"
+  "speedRamp.velocity": "Velocity",
+  "phone.format": "Format",
+  "phone.frameNow": "Jetzt: {0} · {1}",
+  "phone.ownFrame": "Eigene Größe oder Bildrate…",
+  "reframe.refilledMany": "{0} Clips füllen das neue Bild. Einmal Rückgängig, und sie bleiben, wie sie waren.",
+  "reframe.refilledOne": "1 Clip füllt das neue Bild. Einmal Rückgängig, und er bleibt, wie er war."
 }

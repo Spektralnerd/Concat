@@ -1617,6 +1617,10 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_ratio_changed(on_window!(|state, index: i32| {
         state.set_output((index.max(0) as usize).min(OUTPUTS.len() - 1));
     }));
+    // Fork: a rate picked on the phone's Canvas sheet, a row of RATES.
+    editor.on_frame_rate_changed(on_window!(|state, index: i32| {
+        state.set_rate((index.max(0) as usize).min(RATES.len() - 1));
+    }));
     editor.on_quality_changed(on_window!(|state, index: i32| {
         state.handle(Msg::Monitor(MonitorMsg::QualityChanged(index)));
     }));

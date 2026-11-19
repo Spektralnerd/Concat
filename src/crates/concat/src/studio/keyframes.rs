@@ -2974,9 +2974,54 @@ impl Studio {
             height: height as u32,
             ..session.video()
         };
+        let from = self.output_size();
+        let timeline_id = self.project().active_timeline_id.clone();
+        self.apply(Command::SetTimelineVideo { timeline_id, video });
+        self.refill_from(from);
+        self.request_preview();
+    }
+
+    /// Fork: changes the active timeline's frame rate to row `index` of
+    /// `RATES`, from the phone's Canvas sheet. The frame and everything else
+    /// stay; the cuts stay where they are in seconds.
+    pub fn set_rate(&mut self, index: usize) {
+        let (_, rate_num, rate_den) = RATES[index.min(RATES.len() - 1)];
+        let Some(session) = self.session.as_ref() else {
+            return;
+        };
+        let video = model::VideoSettings {
+            rate_num,
+            rate_den,
+            ..session.video()
+        };
         let timeline_id = self.project().active_timeline_id.clone();
         self.apply(Command::SetTimelineVideo { timeline_id, video });
         self.request_preview();
+    }
+
+    /// Fork: once the active timeline's frame has changed from `from`, every
+    /// picture that covered the old frame is made to cover the new one; see
+    /// `concat_project::reframe`. An edit of its own after the frame's, so
+    /// one undo keeps the new frame with the pictures as they were, which
+    /// the notice says.
+    pub fn refill_from(&mut self, from: (u32, u32)) {
+        let to = self.output_size();
+        if from == to {
+            return;
+        }
+        let found = concat_project::reframe::refill(self.project(), from, to);
+        if found.commands.is_empty() {
+            return;
+        }
+        self.apply(Command::Batch {
+            commands: found.commands,
+        });
+        let notice = if found.clips == 1 {
+            t("reframe.refilledOne")
+        } else {
+            tf("reframe.refilledMany", &[&found.clips])
+        };
+        self.notify(&notice, false);
     }
 }
 

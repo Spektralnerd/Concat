@@ -6,6 +6,7 @@ import { Theme } from "../theme/theme.slint";
 import { Glyph, Icon } from "../icons.slint";
 import { Backdrop, BackdropData } from "../timeline/model.slint";
 import { Button } from "../primitives/modal.slint";
+import { Editor } from "../editor.slint";
 
 // The phone's Canvas sheet: what fills a tall frame beside a wide shot,
 // and Fit and Fill, the way a phone editor lays them out - tiles and
@@ -86,6 +87,58 @@ component Step inherits Rectangle {
     }
 }
 
+/// Fork: a frame of the list, drawn to its shape over its name. Lit while
+/// it is the timeline's frame.
+component FormatTile inherits Rectangle {
+    /// Width over height.
+    in property <float> aspect;
+    in property <string> label;
+    in property <bool> current;
+
+    callback clicked();
+
+    height: 68px;
+    horizontal-stretch: 1;
+    border-radius: Theme.r-lg;
+    border-width: root.current ? 2px : 0px;
+    border-color: Theme.accent;
+    background: touch.pressed ? Theme.field-active : Theme.field;
+
+    animate background { duration: 100ms; easing: cubic-bezier(0.4, 0, 0.2, 1); }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 6px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                Rectangle {
+                    width: root.aspect >= 1 ? parent.width : parent.height * root.aspect;
+                    height: root.aspect >= 1 ? parent.width / root.aspect : parent.height;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-width: 1.5px;
+                    border-radius: 2px;
+                    border-color: root.current ? Theme.accent : Theme.fg;
+                }
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.current ? Theme.fg : Theme.fg-muted;
+            font-size: Theme.fs;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 /// A quiet heading over a group in the sheet.
 component Heading inherits Text {
     color: Theme.fg-dim;
@@ -113,7 +166,103 @@ export component PhoneCanvas inherits VerticalLayout {
         #2ec4b6, #3a86ff, #8338ec, #ff4fa3,
     ];
 
+    /// Fork: the frames on offer, as rows of the frame list (`OUTPUTS` in
+    /// studio.rs, which the monitor's picker and the project sheet use too),
+    /// in the order a phone editor lists them; two rows of four.
+    property <[{row: int, aspect: float, label: string}]> formats-top: [
+        { row: 2, aspect: 1080 / 1920, label: "9:16" },
+        { row: 0, aspect: 1920 / 1080, label: "16:9" },
+        { row: 3, aspect: 1, label: "1:1" },
+        { row: 4, aspect: 1080 / 1350, label: "4:5" },
+    ];
+    property <[{row: int, aspect: float, label: string}]> formats-bottom: [
+        { row: 5, aspect: 1080 / 1440, label: "3:4" },
+        { row: 6, aspect: 1440 / 1080, label: "4:3" },
+        { row: 7, aspect: 2560 / 1080, label: "21:9" },
+        { row: 1, aspect: 3840 / 2160, label: "4K" },
+    ];
+    /// Fork: the rates on offer, as rows of the rate list (`RATES`); 10, 20
+    /// and 48 and any rate at all are the project sheet's.
+    property <[{row: int, fps: float, label: string}]> rates-top: [
+        { row: 2, fps: 23.976, label: "23.976" },
+        { row: 3, fps: 24, label: "24" },
+        { row: 4, fps: 25, label: "25" },
+        { row: 5, fps: 29.97, label: "29.97" },
+    ];
+    property <[{row: int, fps: float, label: string}]> rates-bottom: [
+        { row: 6, fps: 30, label: "30" },
+        { row: 8, fps: 50, label: "50" },
+        { row: 9, fps: 59.94, label: "59.94" },
+        { row: 10, fps: 60, label: "60" },
+    ];
+
+    /// Fork: the project sheet, for a frame or a rate of one's own.
+    callback more();
+
     spacing: 12px;
+
+    // ── Fork: the timeline's frame and rate, where a phone editor keeps
+    // them. A frame picked here is an edit like the project sheet's, and
+    // the pictures that covered the old frame are made to cover the new
+    // one, as a step of their own. ──
+    if !root.own: Heading { text: I18n.upper("phone.format"); }
+    if !root.own: VerticalLayout {
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            for format in root.formats-top: FormatTile {
+                aspect: format.aspect;
+                label: format.label;
+                current: Editor.ratio-index == format.row;
+                clicked => { Editor.ratio-changed(format.row); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            for format in root.formats-bottom: FormatTile {
+                aspect: format.aspect;
+                label: format.label;
+                current: Editor.ratio-index == format.row;
+                clicked => { Editor.ratio-changed(format.row); }
+            }
+        }
+    }
+
+    if !root.own: Heading { text: I18n.upper("common.frameRate"); }
+    if !root.own: VerticalLayout {
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            for rate in root.rates-top: Step {
+                label: rate.label;
+                current: Math.abs(Editor.frame-rate - rate.fps) < 0.005;
+                clicked => { Editor.frame-rate-changed(rate.row); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            for rate in root.rates-bottom: Step {
+                label: rate.label;
+                current: Math.abs(Editor.frame-rate - rate.fps) < 0.005;
+                clicked => { Editor.frame-rate-changed(rate.row); }
+            }
+        }
+    }
+
+    // What the timeline is now, whichever row it is or is not.
+    if !root.own: Text {
+        text: I18n.t2("phone.frameNow", Editor.project-output, Editor.project-rate);
+        color: Theme.fg-dim;
+        font-size: Theme.fs;
+        wrap: word-wrap;
+    }
+
+    if !root.own: Button {
+        block: true;
+        glyph: Glyph.settings;
+        label: I18n.t("phone.ownFrame");
+        clicked => { root.more(); }
+    }
 
     if root.own && Backdrop.can-frame: Heading { text: I18n.t("common.size"); }
     if root.own && Backdrop.can-frame: HorizontalLayout {

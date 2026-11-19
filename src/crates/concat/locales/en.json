@@ -1195,5 +1195,10 @@
   "studio.smooth": "Smooth slow motion: {0}",
   "studio.smoothClipNowShows": "The clip now shows its smooth copy",
   "studio.smoothClipMoved": "The clip shows more of its file than its smooth copy holds; make it again",
-  "speedRamp.velocity": "Velocity"
+  "speedRamp.velocity": "Velocity",
+  "phone.format": "Format",
+  "phone.frameNow": "Now: {0} · {1}",
+  "phone.ownFrame": "Your own size or frame rate…",
+  "reframe.refilledMany": "{0} clips fill the new frame. Undo once to leave them as they were.",
+  "reframe.refilledOne": "1 clip fills the new frame. Undo once to leave it as it was."
 }

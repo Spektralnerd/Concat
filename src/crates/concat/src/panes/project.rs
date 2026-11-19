@@ -124,6 +124,8 @@ impl ProjectPane {
         let name = sheet.name.trim().to_owned();
         let (width, height) = sheet.frame();
         let (num, den) = sheet.rate();
+        // Fork: the frame the pictures were framed for, for the refill.
+        let from = studio.output_size();
         let Some(session) = studio.session.as_mut() else {
             return;
         };
@@ -140,6 +142,7 @@ impl ProjectPane {
         }
         let timeline_id = studio.project().active_timeline_id.clone();
         studio.apply(Command::SetTimelineVideo { timeline_id, video });
+        studio.refill_from(from);
         studio.request_preview();
     }
 

@@ -284,6 +284,9 @@ export global Editor {
     callback seek(seconds: float);
     callback step-frames(frames: float);
     callback ratio-changed(index: int);
+    /// Fork: a rate picked on the phone's Canvas sheet, as a row of the
+    /// rate list (`RATES` in studio.rs).
+    callback frame-rate-changed(index: int);
     callback quality-changed(index: int);
 
     /// Every picture under the playhead, placed as the compositor places it.

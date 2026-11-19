@@ -1542,7 +1542,14 @@ export component PhoneEditor inherits Rectangle {
         }
 
         // ── the inspector's pages ──
-        if root.sheet == "canvas": PhoneCanvas { own: false; }
+        if root.sheet == "canvas": PhoneCanvas {
+            own: false;
+            // Fork: a frame or a rate of one's own is the project sheet's.
+            more => {
+                root.hide();
+                Editor.modify-project();
+            }
+        }
         if root.sheet == "clip-canvas": PhoneCanvas { own: true; }
 
         if root.sheet == "clip-mask": PhoneMaskPanel {
