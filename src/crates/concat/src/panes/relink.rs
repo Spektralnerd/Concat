@@ -12,7 +12,6 @@ use concat_project::model::{MediaKind, MissingMedia};
 use slint::VecModel;
 
 use crate::i18n::{t, tf};
-use crate::platform;
 use crate::studio::Studio;
 use crate::ui::{MissingMediaItem, RelinkData};
 
@@ -63,15 +62,14 @@ impl RelinkPane {
             // the rest, and open on whatever missing is new to them.
             RelinkMsg::Recheck(missing) => self.recheck(missing),
             // The picker runs with the studio unborrowed and answers as a
-            // message of its own; see `host::after_dialog`.
+            // message of its own; see `host::after_dialog`. Fork: through
+            // `pick_folder_then`, so a phone's own folder picker answers
+            // too - before, Search a folder did nothing on a phone.
             RelinkMsg::RelinkAll => {
                 let title = t("relink.selectFolderContainingMedia");
-                crate::host::after_dialog(
-                    move || platform::pick_folder(&title, ""),
-                    |studio, _, _, folder| {
-                        studio.handle(crate::panes::Msg::Relink(RelinkMsg::RelinkIn(folder)));
-                    },
-                );
+                crate::host::pick_folder_then(title, String::new(), |studio, _, _, folder| {
+                    studio.handle(crate::panes::Msg::Relink(RelinkMsg::RelinkIn(folder)));
+                });
             }
             RelinkMsg::RelinkIn(folder) => self.relink_in(studio, folder),
             RelinkMsg::Locate(id) => {

@@ -1204,7 +1204,7 @@
   "settings.filesInPlace": "Keep files where they are",
   "settings.filesInPlaceHint": "Clips, songs and pictures picked from the phone or an SD card stay there, and the project points at them instead of a copy in Concat. Android asks for access to all files first. Moved or deleted files show up as missing.",
   "start.folderNeedsAccess": "Allow Concat access to all files, then pick the folder again.",
-  "start.folderNeedsAndroid11": "Projects on an SD card or a USB drive need Android 11 or later.",
-  "start.folderNotWritable": "Concat can't write to this folder. Pick one on the phone's storage, an SD card or a USB drive.",
+  "start.folderNeedsAndroid11": "Picking a folder on a phone needs Android 11 or later.",
+  "start.folderNotWritable": "Concat can't open this folder or write to it. Pick one on the phone's storage, an SD card or a USB drive.",
   "start.locationDefault": "Default"
 }

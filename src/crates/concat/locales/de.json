@@ -1185,7 +1185,7 @@
   "settings.filesInPlace": "Dateien an ihrem Ort lassen",
   "settings.filesInPlaceHint": "Clips, Musik und Bilder vom Telefon oder einer SD-Karte bleiben dort, und das Projekt zeigt auf sie statt auf eine Kopie in Concat. Android fragt vorher nach dem Zugriff auf alle Dateien. Verschobene oder gelöschte Dateien fehlen dann im Projekt.",
   "start.folderNeedsAccess": "Erlaube Concat den Zugriff auf alle Dateien und wähle den Ordner dann noch einmal.",
-  "start.folderNeedsAndroid11": "Projekte auf einer SD-Karte oder USB-Platte gehen erst ab Android 11.",
-  "start.folderNotWritable": "In diesen Ordner kann Concat nicht schreiben. Wähle einen im Telefonspeicher, auf der SD-Karte oder einer USB-Platte.",
+  "start.folderNeedsAndroid11": "Einen Ordner wählen geht auf dem Handy erst ab Android 11.",
+  "start.folderNotWritable": "Concat kann diesen Ordner nicht öffnen oder nicht hineinschreiben. Wähle einen im Telefonspeicher, auf der SD-Karte oder einer USB-Platte.",
   "start.locationDefault": "Standard"
 }
