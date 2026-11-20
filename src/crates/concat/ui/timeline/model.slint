@@ -143,6 +143,9 @@ export struct ClipData {
     /// bar's first beat taller. Both empty with no grid, or one hidden.
     beat-lines: string,
     beat-ticks: string,
+    /// Fork: an edit's cuts, the lines another film is cut to, drawn as
+    /// `beat-lines` is; empty with none, or with them kept off the lanes.
+    cut-lines: string,
 }
 
 
@@ -543,6 +546,17 @@ export struct SelectedClipData {
     beats-bars: bool,
     beats-offset: float,
     beats-hidden: bool,
+
+    // Fork: the cuts of the clip's file, when it is an edit to cut to (see
+    // the phone's Cuts sheet): whether it has a picture from a file at
+    // all; the reading, -1 when none is running, else how far along;
+    // whether cuts were found, how many, and whether they are kept off
+    // the lanes
+    cuts-footage: bool,
+    cuts-progress: float,
+    cuts-found: bool,
+    cuts-count: int,
+    cuts-hidden: bool,
 
     // Enhance writing this clip's enhanced copy: -1 when it is not, else
     // how far along, and whether that is the model downloading rather

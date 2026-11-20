@@ -1223,6 +1223,7 @@ impl Studio {
         };
         let (mask_rows, mask_index) = self.mask_rows(clip);
         let beats = self.beat_readout(clip);
+        let cuts = self.cut_readout(clip);
         SelectedClipData {
             present: true,
             batch: targets.len() as i32,
@@ -1566,6 +1567,11 @@ impl Studio {
             beats_bars: beats.bars,
             beats_offset: beats.offset,
             beats_hidden: beats.hidden,
+            cuts_footage: cuts.footage,
+            cuts_progress: cuts.progress,
+            cuts_found: cuts.found,
+            cuts_count: cuts.count,
+            cuts_hidden: cuts.hidden,
         }
     }
 

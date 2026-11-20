@@ -1210,5 +1210,16 @@
   "scenes.seconds": "{0} s",
   "scenes.oneAtATime": "Es wird schon ein Film gelesen. Warte, bis er fertig ist, oder brich ihn in seinem Szenen-Fenster ab.",
   "scenes.failed": "Szenen: {0}",
-  "scenes.done": "Die Szenen von „{0}“ sind fertig"
+  "scenes.done": "Die Szenen von „{0}“ sind fertig",
+  "cuts.title": "Schnitte",
+  "cuts.what": "Findet die Schnitte dieses Clips – etwa eines Edits, nach dem du einen anderen Film schneiden willst – und legt sie als weiße Linien darüber. Clips auf den anderen Spuren rasten beim Verschieben und Trimmen daran ein.",
+  "cuts.count": "{0} Schnitte, als weiße Linien über dem Clip. Clips auf den anderen Spuren rasten daran ein.",
+  "cuts.reading": "Schnitte werden gesucht: {0} %",
+  "cuts.knobsNote": "Schwelle: ab wie viel Bildänderung ein Schnitt zählt (Standard 27, kleiner findet mehr). Mindestlänge: Schnitte, die dichter liegen, werden zusammengefasst.",
+  "cuts.detect": "Schnitte finden",
+  "cuts.again": "Neu finden",
+  "cuts.show": "Auf der Spur zeigen",
+  "cuts.clear": "Schnitte entfernen",
+  "cuts.found": "{0} Schnitte gefunden",
+  "cuts.failed": "Schnitte: {0}"
 }

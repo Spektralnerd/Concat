@@ -244,9 +244,10 @@ impl Studio {
         let Some(source) = self.source.as_mut() else {
             return;
         };
-        source.stop_at = Some(end as f64 / fps);
-        // Half a frame in: the scene's own first frame, never the last of
-        // the one before.
+        // Half a frame inside it at either end: the scene's own first and
+        // last frames, never the last of the scene before or the first of
+        // the one after.
+        source.stop_at = Some((end as f64 - 0.5) / fps);
         self.source_seek((start as f64 + 0.5) / fps);
         if self.source.as_ref().is_some_and(|source| !source.playing) {
             self.source_toggle();

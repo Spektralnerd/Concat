@@ -408,6 +408,14 @@ export global Editor {
     callback beats-shift(beats: int);
     callback beats-tempo(factor: int);
     callback beats-clear();
+    /// Fork: the selected clip's file read through for its cuts, a cut
+    /// where a frame's score reaches `threshold`, none sooner than
+    /// `min-seconds` after the last; stopped; shown on the lanes or kept
+    /// off them; dropped.
+    callback cuts-detect(threshold: float, min-seconds: float);
+    callback cuts-cancel();
+    callback cuts-set-hidden(hidden: bool);
+    callback cuts-clear();
     callback clip-enhance-set(on: bool);
     /// The Enhance section's settings and its preview; see EnhancePanel.
     /// `scale` is times larger, zero for Auto.

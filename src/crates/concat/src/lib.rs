@@ -1108,6 +1108,19 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_scenes_play(on_window!(|state, scene: i32| {
         state.scenes_play(scene);
     }));
+    // Fork: an edit's cuts, the lines another film is cut to.
+    editor.on_cuts_detect(on_window!(|state, threshold: f32, min_seconds: f32| {
+        state.cuts_detect(threshold, min_seconds);
+    }));
+    editor.on_cuts_cancel(on_window!(|state| {
+        state.cuts_cancel();
+    }));
+    editor.on_cuts_set_hidden(on_window!(|state, hidden: bool| {
+        state.cuts_set_hidden(hidden);
+    }));
+    editor.on_cuts_clear(on_window!(|state| {
+        state.cuts_clear();
+    }));
     editor.on_scenes_add(on_window!(|state, at_end: bool| {
         state.scenes_add(at_end);
     }));

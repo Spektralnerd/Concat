@@ -15,6 +15,56 @@ use serde::{Deserialize, Serialize};
 use crate::model::{Clip, ClipKind, MediaItem};
 use crate::speed;
 
+/// Fork: the cuts of an edit - the moments its shots change, in seconds
+/// into the file - kept on its bin entry (see [`MediaItem::cuts`]): lines
+/// drawn across its clips on the lanes, and what the timeline's cuts snap
+/// to, so another film can be cut to the same rhythm. Finding them is
+/// `concat_media::scenes`.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, PartialEq, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CutMarks {
+    /// When each shot after the first starts, in seconds into the file,
+    /// rising.
+    #[serde(deserialize_with = "crate::model::wire::list")]
+    pub times: Vec<f64>,
+    /// Kept off the lanes, and so snapping nothing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+}
+
+impl CutMarks {
+    /// Every number in it, for the check that none is NaN or infinite.
+    pub fn numbers(&self) -> impl Iterator<Item = f64> + '_ {
+        self.times.iter().copied()
+    }
+
+    /// The times sorted, with duplicates and anything below zero or not a
+    /// number dropped.
+    pub fn tidy(&mut self) {
+        self.times.retain(|time| time.is_finite() && *time >= 0.0);
+        self.times.sort_by(f64::total_cmp);
+        self.times.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    }
+}
+
+/// The cuts a clip shows on the timeline, in order: its media's, where
+/// the clip plays them, through its in-point and speed. None for a clip
+/// without a picture, or cuts kept off the lanes.
+pub fn clip_cuts(clip: &Clip, media: &MediaItem) -> Vec<f64> {
+    let Some(marks) = media.cuts.as_ref().filter(|marks| !marks.hidden) else {
+        return Vec::new();
+    };
+    if clip.kind != ClipKind::Video {
+        return Vec::new();
+    }
+    marks
+        .times
+        .iter()
+        .filter_map(|&time| timeline_of(clip, time))
+        .collect()
+}
+
 /// What a beat is on the lanes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BeatMark {
@@ -441,6 +491,36 @@ mod tests {
             beats: grid,
             ..MediaItem::default()
         }
+    }
+
+    #[test]
+    fn an_edits_cuts_land_where_its_clip_plays_them() {
+        let marks = CutMarks {
+            times: vec![5.0, 1.0, 3.0, 3.0, f64::NAN, 9.0],
+            hidden: false,
+        };
+        let mut tidy = marks.clone();
+        tidy.tidy();
+        assert_eq!(tidy.times, vec![1.0, 3.0, 5.0, 9.0]);
+        let media = MediaItem {
+            id: "m1".to_owned(),
+            kind: MediaKind::Video,
+            cuts: Some(tidy.clone()),
+            ..MediaItem::default()
+        };
+        let mut picture = clip(10.0, 2.0, 3.0, 2.0);
+        picture.kind = ClipKind::Video;
+        // From 2 s into the edit at twice its speed: 3 and 5 s of it
+        // fall a half and one and a half seconds in; 9 s is past its end.
+        assert_eq!(clip_cuts(&picture, &media), vec![10.5, 11.5]);
+        // Kept off the lanes, they are nowhere; a sound clip has none.
+        let mut hidden = media.clone();
+        hidden.cuts = Some(CutMarks {
+            hidden: true,
+            ..tidy
+        });
+        assert!(clip_cuts(&picture, &hidden).is_empty());
+        assert!(clip_cuts(&clip(10.0, 2.0, 3.0, 2.0), &media).is_empty());
     }
 
     #[test]

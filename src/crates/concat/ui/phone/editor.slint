@@ -650,6 +650,7 @@ export component PhoneEditor inherits Rectangle {
             : name == "clip-mask" ? I18n.t("mask.title")
             : name == "clip-animate" ? I18n.t("motion.animate")
             : name == "scenes" ? Editor.scenes-title
+            : name == "clip-cuts" ? I18n.t("cuts.title")
             : "";
     }
 
@@ -1326,6 +1327,14 @@ export component PhoneEditor inherits Rectangle {
                 current: root.sheet == "clip-beats";
                 clicked => { root.show("clip-beats", true); }
             }
+            // Fork: an edit's cuts, the lines another film is cut to.
+            if root.is-video && Editor.selected-clip.cuts-footage
+                && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.razor;
+                label: I18n.t("cuts.title");
+                current: root.sheet == "clip-cuts";
+                clicked => { root.show("clip-cuts", true); }
+            }
             // In, Out and Loop: the moves a clip, a title or a shape makes.
             if root.is-picture || root.is-text || root.is-shape: ToolItem {
                 glyph: Glyph.circle-play;
@@ -1913,6 +1922,101 @@ export component PhoneEditor inherits Rectangle {
         if root.sheet == "clip-beats": BeatPanel {
             selected: Editor.selected-clip;
             first: true;
+        }
+
+        // ── Fork: an edit's cuts, the lines another film is cut to ──
+        if root.sheet == "clip-cuts": VerticalLayout {
+            padding: 12px;
+            spacing: 12px;
+
+            SheetNote {
+                text: Editor.selected-clip.cuts-found
+                    ? I18n.t1("cuts.count", Editor.selected-clip.cuts-count)
+                    : I18n.t("cuts.what");
+            }
+
+            // The reading under way: how far, and a stop.
+            if Editor.selected-clip.cuts-progress >= 0: VerticalLayout {
+                spacing: 8px;
+                Text {
+                    text: I18n.t1("cuts.reading", Math.round(Editor.selected-clip.cuts-progress * 100));
+                    color: Theme.fg;
+                    font-size: Theme.fs;
+                }
+                Progress {
+                    height: 6px;
+                    value: Editor.selected-clip.cuts-progress;
+                    live: true;
+                }
+                SheetButton {
+                    glyph: Glyph.stop;
+                    label: I18n.t("scenes.stop");
+                    clicked => { Editor.cuts-cancel(); }
+                }
+            }
+
+            if Editor.selected-clip.cuts-progress < 0: VerticalLayout {
+                spacing: 8px;
+
+                SheetNote {
+                    text: I18n.t("cuts.knobsNote");
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: I18n.t("scenes.threshold");
+                        color: Theme.fg;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                    cut-threshold := NumberField {
+                        width: 76px;
+                        height: 40px;
+                        value: 27;
+                        minimum: 0.1;
+                        maximum: 255;
+                        step: 1;
+                        precision: 1;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: I18n.t("scenes.shortest");
+                        color: Theme.fg;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                    cut-shortest := NumberField {
+                        width: 76px;
+                        height: 40px;
+                        value: 0.25;
+                        minimum: 0;
+                        maximum: 600;
+                        step: 0.05;
+                        precision: 2;
+                        unit: "s";
+                    }
+                }
+                SheetButton {
+                    glyph: Glyph.razor;
+                    primary: !Editor.selected-clip.cuts-found;
+                    label: Editor.selected-clip.cuts-found ? I18n.t("cuts.again") : I18n.t("cuts.detect");
+                    clicked => {
+                        Editor.cuts-detect(cut-threshold.current, cut-shortest.current);
+                        Focus.release();
+                    }
+                }
+            }
+
+            if Editor.selected-clip.cuts-found: SwitchRow {
+                label: I18n.t("cuts.show");
+                checked: !Editor.selected-clip.cuts-hidden;
+                toggled(on) => { Editor.cuts-set-hidden(!on); }
+            }
+            if Editor.selected-clip.cuts-found: SheetButton {
+                glyph: Glyph.trash;
+                label: I18n.t("cuts.clear");
+                clicked => { Editor.cuts-clear(); }
+            }
         }
 
         if root.sheet == "clip-audio": VerticalLayout {

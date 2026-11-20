@@ -5718,6 +5718,7 @@ mod tests {
             color_space: Default::default(),
             origin: None,
             beats: None,
+            cuts: None,
             extra: Default::default(),
         });
 
@@ -5758,6 +5759,7 @@ mod tests {
             color_space: Default::default(),
             origin: None,
             beats: None,
+            cuts: None,
             extra: Default::default(),
         });
 

@@ -483,6 +483,20 @@ component Clip inherits Rectangle {
             fit: fill;
             fill: Theme.accent.with-alpha(0.9);
         }
+
+        // Fork: an edit's cuts, the lines another film is cut to: white,
+        // so they read apart from the beat grid's.
+        if root.item.cut-lines != "": Path {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            commands: root.item.cut-lines;
+            viewbox-width: 1;
+            viewbox-height: 1;
+            fit: fill;
+            fill: #ffffffe6;
+        }
     }
 
     // ── header ───────────────────────────────────────────────────────────

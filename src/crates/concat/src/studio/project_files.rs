@@ -391,6 +391,7 @@ impl Studio {
         self.stabilize_jobs.clear();
         self.stabilize_retry.clear();
         self.cancel_beats();
+        self.cancel_cuts();
         // The sheet goes with the project; a read through a film runs on.
         self.scenes = None;
         self.cancel_voices();

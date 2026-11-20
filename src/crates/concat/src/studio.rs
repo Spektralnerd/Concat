@@ -47,6 +47,7 @@ use concat_project::{Command, PlayheadSide};
 mod backdrop;
 mod beats;
 mod consolidate;
+mod cuts;
 use consolidate::MergeJob;
 mod masking;
 mod masks;
@@ -1299,6 +1300,10 @@ pub struct Studio {
     /// Fork: the Scenes sheet's film and what is known of its scenes, while
     /// the sheet is up. See `scenes`.
     scenes: Option<scenes::ScenesView>,
+    /// Fork: the readings of edits for their cuts, by media id, how far
+    /// each has got, and each one's stop. See `cuts`.
+    cut_jobs: HashMap<String, f32>,
+    cut_cancels: HashMap<String, Arc<std::sync::atomic::AtomicBool>>,
     /// The beat grids drawn over the clips on the lanes, by what each was
     /// drawn for; see `Studio::beat_paths`.
     beat_marks: RefCell<HashMap<String, (SharedString, SharedString)>>,
@@ -2059,6 +2064,7 @@ fn command_kind(command: &Command) -> &'static str {
         Command::UpdateMediaPath { .. } => "Relink media",
         Command::SetMediaColorRange { .. } => "Colour range",
         Command::SetMediaBeats { .. } => "Beats",
+        Command::SetMediaCuts { .. } => "Cuts to cut to",
     }
 }
 
@@ -3248,6 +3254,8 @@ impl Studio {
             beat_jobs: HashMap::new(),
             beat_cancels: HashMap::new(),
             scenes: None,
+            cut_jobs: HashMap::new(),
+            cut_cancels: HashMap::new(),
             beat_marks: RefCell::new(HashMap::new()),
             voice_jobs: HashMap::new(),
             voice_cancel: None,

@@ -1073,6 +1073,17 @@ pub enum Command {
         /// The beats and their grid, or None for none.
         beats: Option<crate::beats::BeatGrid>,
     },
+    /// Fork: keeps the cuts found in a media file's picture on its bin
+    /// entry - or drops them with None. Reaches every clip of the media,
+    /// on every timeline: their lines on the lanes and what cuts snap to.
+    /// Sorted on the way in (see `CutMarks::tidy`). An unknown id is a
+    /// no-op.
+    SetMediaCuts {
+        /// The bin item.
+        media_id: String,
+        /// The cuts, or None for none.
+        cuts: Option<crate::beats::CutMarks>,
+    },
 }
 
 /// What a command produced, beyond the new state: the ids it minted, so the
@@ -1399,6 +1410,9 @@ impl Command {
             Command::SetMediaBeats {
                 beats: Some(grid), ..
             } => bad(grid.numbers()),
+            Command::SetMediaCuts {
+                cuts: Some(marks), ..
+            } => bad(marks.numbers()),
             Command::SetTimelineBackground {
                 background: Background::Blur { amount },
                 ..
@@ -1475,7 +1489,8 @@ pub fn apply(
         | Command::RemoveFont { .. }
         | Command::UpdateMediaPath { .. }
         | Command::SetMediaColorRange { .. }
-        | Command::SetMediaBeats { .. }) => media::apply(project, mint, command),
+        | Command::SetMediaBeats { .. }
+        | Command::SetMediaCuts { .. }) => media::apply(project, mint, command),
         command @ (Command::AddClip { .. }
         | Command::AddClipAtFirstFree { .. }
         | Command::AddClipsInSequence { .. }

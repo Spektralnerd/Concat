@@ -61,6 +61,7 @@ pub(super) fn apply(
                 color_range: None,
                 color_space: item.color_space,
                 beats: None,
+                cuts: None,
                 extra: Default::default(),
             });
             Ok(Outcome {
@@ -222,6 +223,22 @@ pub(super) fn apply(
                 .iter_mut()
                 .find(|item| item.id == media_id)
                 .is_some_and(|item| assign(&mut item.beats, beats));
+            Ok(Outcome {
+                created_id: None,
+                applied,
+            })
+        }
+
+        Command::SetMediaCuts { media_id, cuts } => {
+            let cuts = cuts.map(|mut marks| {
+                marks.tidy();
+                marks
+            });
+            let applied = project
+                .media
+                .iter_mut()
+                .find(|item| item.id == media_id)
+                .is_some_and(|item| assign(&mut item.cuts, cuts));
             Ok(Outcome {
                 created_id: None,
                 applied,

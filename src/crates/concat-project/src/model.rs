@@ -220,6 +220,12 @@ pub struct MediaItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "wire::maybe")]
     pub beats: Option<crate::beats::BeatGrid>,
+    /// Fork: the cuts found in the file's picture, when it is an edit the
+    /// timeline is cut to; see [`crate::beats::CutMarks`]. Absent, and
+    /// left out of the document, until they are looked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "wire::maybe")]
+    pub cuts: Option<crate::beats::CutMarks>,
     /// Fields this build does not know, kept so a document written by a
     /// newer or a different build round-trips through this one intact.
     #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]

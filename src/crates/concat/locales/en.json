@@ -1229,5 +1229,16 @@
   "scenes.seconds": "{0} s",
   "scenes.oneAtATime": "A film is already being read. Wait for it, or stop it on its own sheet.",
   "scenes.failed": "Scenes: {0}",
-  "scenes.done": "The scenes of “{0}” are ready"
+  "scenes.done": "The scenes of “{0}” are ready",
+  "cuts.title": "Cuts",
+  "cuts.what": "Finds the cuts of this clip - an edit you want to cut another film to - and lays them over it as white lines. Clips on the other lanes snap to them as you move or trim them.",
+  "cuts.count": "{0} cuts, drawn over the clip as white lines. Clips on the other lanes snap to them.",
+  "cuts.reading": "Finding the cuts: {0} %",
+  "cuts.knobsNote": "Threshold: how much a frame must change to count as a cut (27 by default; lower finds more). Shortest: cuts closer than this are merged.",
+  "cuts.detect": "Find cuts",
+  "cuts.again": "Find again",
+  "cuts.show": "Show on the lanes",
+  "cuts.clear": "Remove cuts",
+  "cuts.found": "{0} cuts found",
+  "cuts.failed": "Cuts: {0}"
 }

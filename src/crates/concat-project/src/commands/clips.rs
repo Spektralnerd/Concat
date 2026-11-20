@@ -756,6 +756,7 @@ pub(super) fn apply(
                         color_range: None,
                         color_space: item.color_space,
                         beats: None,
+                        cuts: None,
                         extra: Default::default(),
                     });
                     id
@@ -1432,6 +1433,7 @@ fn bin_entry(project: &mut Project, mint: &mut IdMint, item: NewMedia) -> String
         color_range: None,
         color_space: item.color_space,
         beats: None,
+        cuts: None,
         extra: Default::default(),
     });
     id

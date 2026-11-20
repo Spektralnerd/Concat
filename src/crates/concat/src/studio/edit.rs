@@ -343,6 +343,8 @@ impl Studio {
         // The lines of the songs' beat grids, but those of a song being
         // moved itself, whose lines move with it.
         targets.extend(self.beat_targets(|id| moving.contains(&id)));
+        // Fork: and an edit's cuts, likewise.
+        targets.extend(self.cut_targets(|id| moving.contains(&id)));
         let mut best = 0.0;
         let mut best_distance = threshold;
         for &edge in edges {
@@ -380,6 +382,9 @@ impl Studio {
             consider((clip.start + clip.duration) as f32);
         }
         for line in self.beat_targets(|id| id == exclude) {
+            consider(line);
+        }
+        for line in self.cut_targets(|id| id == exclude) {
             consider(line);
         }
         best

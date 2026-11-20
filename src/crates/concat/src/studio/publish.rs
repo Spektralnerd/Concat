@@ -266,6 +266,7 @@ impl Studio {
                             Default::default()
                         };
                     let beats = self.beat_paths(clip);
+                    let cuts = self.cut_paths(clip);
                     ClipData {
                         id: clip.id.as_str().into(),
                         name: clip.name.as_str().into(),
@@ -299,6 +300,7 @@ impl Studio {
                         strip: self.strip_of(clip),
                         beat_lines: beats.0,
                         beat_ticks: beats.1,
+                        cut_lines: cuts,
                     }
                 })
                 .collect(),
