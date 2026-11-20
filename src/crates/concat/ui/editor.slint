@@ -166,6 +166,10 @@ export global Editor {
     callback scenes-page-to(page: int);
     /// A scene's card was tapped: picked, or let go.
     callback scenes-pick(index: int);
+    /// A scene's play button: it plays on the monitor, start to end, or
+    /// pauses when it is the one playing (`scenes-playing`, or -1).
+    callback scenes-play(index: int);
+    in-out property <int> scenes-playing: -1;
     callback scenes-clear-picks();
     /// The picks onto the main lane at the playhead, or after its last
     /// clip, `at-end`, as the bin's Add lays files.

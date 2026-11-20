@@ -1985,6 +1985,7 @@ impl Studio {
         editor.set_scenes_threshold(scenes.threshold);
         editor.set_scenes_min_seconds(scenes.min_seconds);
         editor.set_scenes_aspect(scenes.aspect);
+        editor.set_scenes_playing(scenes.playing);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);

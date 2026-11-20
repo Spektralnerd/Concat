@@ -37,6 +37,9 @@ pub struct Source {
     pub duration: f64,
     pub time: f64,
     pub playing: bool,
+    /// Fork: where play stops short of the file's end - the end of the
+    /// scene the Scenes sheet plays - or none.
+    pub stop_at: Option<f64>,
     /// Follows the speakers' clock while it plays.
     timer: slint::Timer,
 }
@@ -118,6 +121,7 @@ impl Studio {
             duration,
             time: 0.0,
             playing: false,
+            stop_at: None,
             timer: slint::Timer::default(),
         });
         if media.kind == MediaKind::Audio {
@@ -198,6 +202,7 @@ impl Studio {
             duration,
             time: 0.0,
             playing: false,
+            stop_at: None,
             timer: slint::Timer::default(),
         });
         self.source_toggle();
@@ -244,14 +249,20 @@ impl Studio {
                     let Some(source) = studio.source.as_mut() else {
                         return;
                     };
-                    source.time = position.min(source.duration);
-                    let ended = source.time >= source.duration;
+                    let end = source
+                        .stop_at
+                        .map_or(source.duration, |stop| stop.min(source.duration));
+                    source.time = position.min(end);
+                    let ended = source.time >= end;
                     if ended {
                         source.playing = false;
                         source.timer.stop();
                     }
                     if ended {
                         studio.host.playback.pause();
+                        // Fork: the window too, once - a scene card's
+                        // pause button turns back into a play button.
+                        crate::host::on_ui(|_, _, _| {});
                     }
                     studio.request_preview();
                     studio.publish_source(&app);

@@ -126,8 +126,11 @@ component PhoneSceneGrid inherits Rectangle {
     in property <[SceneCardData]> cards;
     /// The pictures' height over their width: the film's.
     in property <float> aspect: 0.5625;
+    /// The scene playing on the monitor, or -1.
+    in property <int> playing: -1;
 
     callback picked(index: int);
+    callback play(index: int);
 
     property <length> gap: 8px;
     property <int> cols: 3;
@@ -223,6 +226,29 @@ component PhoneSceneGrid inherits Rectangle {
 
         TouchArea {
             clicked => { root.picked(card.index); }
+        }
+
+        // Play on the monitor, start to end: over the picture's foot, and
+        // over the card's own tap, which picks.
+        Rectangle {
+            x: parent.width - self.width - 4px;
+            y: root.picture-h - self.height - 4px;
+            width: 32px;
+            height: 32px;
+            border-radius: 16px;
+            background: card.index == root.playing ? Theme.accent : #0000008c;
+
+            Icon {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                glyph: card.index == root.playing ? Glyph.pause : Glyph.play;
+                size: 14px;
+                tint: card.index == root.playing ? Theme.on-accent : #ffffff;
+            }
+
+            TouchArea {
+                clicked => { root.play(card.index); }
+            }
         }
     }
 }
@@ -1486,7 +1512,9 @@ export component PhoneEditor inherits Rectangle {
             if Editor.scenes-listed: PhoneSceneGrid {
                 cards: Editor.scenes-cards;
                 aspect: Editor.scenes-aspect;
+                playing: Editor.scenes-playing;
                 picked(index) => { Editor.scenes-pick(index); }
+                play(index) => { Editor.scenes-play(index); }
             }
             if Editor.scenes-listed && Editor.scenes-pages > 1: ScenePages { }
 

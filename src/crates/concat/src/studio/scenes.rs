@@ -49,6 +49,8 @@ pub(crate) struct ScenesView {
     images: HashMap<usize, slint::Image>,
     /// The page those are of, or are on their way for.
     images_page: Option<usize>,
+    /// The scene last played on the monitor.
+    playing: Option<usize>,
 }
 
 /// A read through a film in the background.
@@ -111,6 +113,8 @@ pub(super) struct ScenesReadout {
     pub picked: i32,
     pub busy: bool,
     pub busy_here: bool,
+    /// The scene playing on the monitor, or -1.
+    pub playing: i32,
     pub progress: f32,
     pub progress_text: String,
     pub threshold: f32,
@@ -187,13 +191,69 @@ impl Studio {
             picked: Vec::new(),
             images: HashMap::new(),
             images_page: None,
+            playing: None,
         });
         self.scenes_load(path);
     }
 
-    /// The sheet closed.
+    /// The sheet closed: the monitor goes back to the timeline from a
+    /// scene it was showing.
     pub fn scenes_close(&mut self) {
-        self.scenes = None;
+        if let Some(view) = self.scenes.take()
+            && self
+                .source
+                .as_ref()
+                .is_some_and(|source| source.media_id == view.media_id && source.card.is_empty())
+        {
+            self.close_source();
+        }
+    }
+
+    /// Plays scene `scene` on the monitor, from its first frame to its
+    /// last, with its sound; pauses it when it is the one playing.
+    pub fn scenes_play(&mut self, scene: i32) {
+        let Some((media_id, list, fps, playing)) = self.scenes.as_ref().and_then(|view| {
+            Some((
+                view.media_id.clone(),
+                view.list.clone()?,
+                view.fps,
+                view.playing,
+            ))
+        }) else {
+            return;
+        };
+        let Ok(scene) = usize::try_from(scene) else {
+            return;
+        };
+        if scene >= list.len() {
+            return;
+        }
+        let shown = self
+            .source
+            .as_ref()
+            .filter(|source| source.media_id == media_id && source.card.is_empty());
+        if playing == Some(scene) && shown.is_some_and(|source| source.playing) {
+            self.source_toggle();
+            return;
+        }
+        if shown.is_none() {
+            let row = self.media.row_of(&media_id).unwrap_or(-1);
+            self.preview_media(&media_id, row);
+        }
+        let (start, end) = list.scene(scene);
+        let Some(source) = self.source.as_mut() else {
+            return;
+        };
+        source.stop_at = Some(end as f64 / fps);
+        // Half a frame in: the scene's own first frame, never the last of
+        // the one before.
+        self.source_seek((start as f64 + 0.5) / fps);
+        if self.source.as_ref().is_some_and(|source| !source.playing) {
+            self.source_toggle();
+        }
+        if let Some(view) = self.scenes.as_mut() {
+            view.playing = Some(scene);
+        }
     }
 
     /// Looks for the film's list and pictures, in the background.
@@ -544,6 +604,7 @@ impl Studio {
             picked: 0,
             busy: running.is_some(),
             busy_here: false,
+            playing: -1,
             progress: 0.0,
             progress_text: String::new(),
             threshold,
@@ -627,6 +688,13 @@ impl Studio {
             tf("scenes.fromNoPictures", &[&list.len(), &source])
         };
         readout.pages = list.len().div_ceil(PAGE).max(1) as i32;
+        if let Some(scene) = view.playing
+            && self.source.as_ref().is_some_and(|source| {
+                source.playing && source.media_id == view.media_id && source.card.is_empty()
+            })
+        {
+            readout.playing = scene as i32;
+        }
         readout.page = view.page as i32;
         readout.picked = view.picked.len() as i32;
         let first = view.page * PAGE;

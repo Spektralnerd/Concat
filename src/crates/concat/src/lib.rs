@@ -1105,6 +1105,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_scenes_clear_picks(on_window!(|state| {
         state.scenes_clear_picks();
     }));
+    editor.on_scenes_play(on_window!(|state, scene: i32| {
+        state.scenes_play(scene);
+    }));
     editor.on_scenes_add(on_window!(|state, at_end: bool| {
         state.scenes_add(at_end);
     }));
