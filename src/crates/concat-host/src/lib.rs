@@ -49,6 +49,7 @@ pub mod projects;
 pub mod proxy;
 pub mod record;
 pub mod reverse;
+pub mod scenes;
 mod route;
 pub mod session;
 pub mod sounds;

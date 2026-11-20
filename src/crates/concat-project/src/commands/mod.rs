@@ -84,6 +84,20 @@ pub struct ClipMove {
     pub track_id: String,
 }
 
+/// Fork: a stretch of one bin item, for [`Command::AddClipSpans`]: the
+/// seconds from `source_start` for `duration` - a film's scene.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipSpan {
+    /// The bin item to cut from.
+    pub media_id: String,
+    /// Where in the item the clip begins, in seconds, floored at 0.
+    pub source_start: f64,
+    /// How long the clip is, in seconds; held to what the item has left.
+    pub duration: f64,
+}
+
 /// A partial update to one clip. Every field optional; `transition_in` and
 /// `text` are double-optional so "clear it" and "leave it alone" stay
 /// distinct on the wire (absent = untouched, null = cleared).
@@ -346,6 +360,23 @@ pub enum Command {
     AddClipsInSequence {
         /// The bin items, in the order they are laid down.
         media_ids: Vec<String>,
+        /// The lane, or None for the lowest one free for the whole run.
+        #[serde(default)]
+        track_id: Option<String>,
+        /// Where the first clip starts, in seconds, floored at 0.
+        start: f64,
+        /// On a named lane, make room as a drop does rather than take the
+        /// nearest gap.
+        #[serde(default)]
+        ripple: bool,
+    },
+    /// Fork: [`Command::AddClipsInSequence`] for stretches of bin items
+    /// rather than whole ones: each clip shows its span's seconds of its
+    /// item, and starts where the one before it ends. What the scenes of a
+    /// film picked on the Scenes sheet land as.
+    AddClipSpans {
+        /// The stretches, in the order they are laid down.
+        spans: Vec<ClipSpan>,
         /// The lane, or None for the lowest one free for the whole run.
         #[serde(default)]
         track_id: Option<String>,
@@ -1227,6 +1258,12 @@ impl Command {
             Command::AddClip { start, .. }
             | Command::AddClipAtFirstFree { start, .. }
             | Command::AddClipsInSequence { start, .. } => bad([*start]),
+            Command::AddClipSpans { spans, start, .. } => {
+                bad([*start])
+                    || spans
+                        .iter()
+                        .any(|span| bad([span.source_start, span.duration]))
+            }
             Command::AddShapeClip {
                 start,
                 duration,
@@ -1442,6 +1479,7 @@ pub fn apply(
         command @ (Command::AddClip { .. }
         | Command::AddClipAtFirstFree { .. }
         | Command::AddClipsInSequence { .. }
+        | Command::AddClipSpans { .. }
         | Command::AddTextClip { .. }
         | Command::AddShapeClip { .. }
         | Command::AddLayerClip { .. }

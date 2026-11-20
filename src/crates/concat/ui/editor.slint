@@ -20,6 +20,23 @@ import {
     TrackSize,
 } from "timeline/model.slint";
 
+/// Fork: one scene of a film on the Scenes sheet.
+export struct SceneCardData {
+    /// The scene, from 0: what a pick names.
+    index: int,
+    /// The scene's number, from 1, as the list counts it.
+    number: int,
+    /// Its middle, once read; `pictured` says whether there is one.
+    picture: image,
+    pictured: bool,
+    /// Where it starts in the film, "1:02:05".
+    time: string,
+    /// How long it is, "3,2 s".
+    length: string,
+    /// Where it is in the order of the picks, from 1, or 0.
+    pick: int,
+}
+
 // Everything the four editor views read and everything they report, in one
 // place that is not a parent.
 //
@@ -114,6 +131,50 @@ export global Editor {
     /// Right-click on a card in the bin: Rust fills `menu-items` for the
     /// file and bumps `menu-token`, the same round trip as `clip-context`.
     callback media-context(id: int);
+
+    // ── Fork: the Scenes sheet ──
+    /// The bin's one pick is a film, whose scenes can be shown.
+    in-out property <bool> media-film-picked;
+    in-out property <string> scenes-title;
+    /// How many scenes there are and where the list came from, or why
+    /// there are none.
+    in-out property <string> scenes-note;
+    in-out property <bool> scenes-loading;
+    /// A list of the film's scenes is there.
+    in-out property <bool> scenes-listed;
+    /// Its pictures were made here, three to a scene.
+    in-out property <bool> scenes-pictured;
+    in-out property <[SceneCardData]> scenes-cards;
+    /// The film's pictures' height over their width.
+    in-out property <float> scenes-aspect: 0.5625;
+    /// The page shown, from 0, of how many.
+    in-out property <int> scenes-page;
+    in-out property <int> scenes-pages: 1;
+    in-out property <int> scenes-picked-count;
+    /// A film is being read through - this one (`scenes-busy-here`) or
+    /// another - and how far, in words and as a fraction.
+    in-out property <bool> scenes-busy;
+    in-out property <bool> scenes-busy-here;
+    in-out property <float> scenes-progress;
+    in-out property <string> scenes-progress-text;
+    /// The detection's knobs as last used.
+    in-out property <float> scenes-threshold: 27;
+    in-out property <float> scenes-min-seconds: 0.6;
+    /// The sheet opens on the bin's picked film, and closes.
+    callback scenes-open();
+    callback scenes-close();
+    callback scenes-page-to(page: int);
+    /// A scene's card was tapped: picked, or let go.
+    callback scenes-pick(index: int);
+    callback scenes-clear-picks();
+    /// The picks onto the main lane at the playhead, or after its last
+    /// clip, `at-end`, as the bin's Add lays files.
+    callback scenes-add(at-end: bool);
+    /// The film read through for its scenes, with these knobs.
+    callback scenes-detect(threshold: float, min-seconds: float);
+    /// The pictures of a list made elsewhere.
+    callback scenes-paint();
+    callback scenes-cancel();
 
     // library catalogue pages
     /// The looks the Text page offers, published once.

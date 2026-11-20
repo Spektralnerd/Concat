@@ -120,6 +120,67 @@ pub(super) fn apply(
             })
         }
 
+        Command::AddClipSpans {
+            spans,
+            track_id,
+            start,
+            ripple,
+        } => {
+            // Each span held inside its item: what is left of it after the
+            // in-point, and never shorter than the shortest clip.
+            let mut items = Vec::with_capacity(spans.len());
+            for span in &spans {
+                let media = project
+                    .media_by_id(&span.media_id)
+                    .cloned()
+                    .ok_or(CommandError::MediaGone)?;
+                let length = clip_length(&media);
+                let source_start = span
+                    .source_start
+                    .clamp(0.0, (length - MIN_CLIP_DURATION).max(0.0));
+                let duration = span
+                    .duration
+                    .min(length - source_start)
+                    .max(MIN_CLIP_DURATION);
+                items.push((media, source_start, duration));
+            }
+            if items.is_empty() {
+                return Ok(Outcome {
+                    created_id: None,
+                    applied: false,
+                });
+            }
+            let start = start.max(0.0);
+            let total: f64 = items.iter().map(|(_, _, duration)| duration).sum();
+            let timeline = project.active_mut();
+            let track_id = match track_id {
+                Some(id) if timeline.track(&id).is_none() => return Err(CommandError::TrackGone),
+                Some(id) => id,
+                None => first_free_track(timeline, start, total)
+                    .unwrap_or_else(|| fresh_track(timeline, mint)),
+            };
+            let mut at = start;
+            let mut first = None;
+            for (media, source_start, duration) in &items {
+                let place = if ripple {
+                    ripple_room(timeline, &track_id, at, *duration)
+                } else {
+                    timeline.nearest_free_start(&track_id, at, *duration, &[])
+                };
+                let id = mint.next("c");
+                let mut clip = default_clip(id.clone(), track_id.clone(), media, place);
+                clip.source_start = *source_start;
+                clip.duration = *duration;
+                timeline.clips.push(Arc::new(clip));
+                first.get_or_insert(id);
+                at = place + duration;
+            }
+            Ok(Outcome {
+                created_id: first,
+                applied: true,
+            })
+        }
+
         Command::AddTextClip {
             track_id,
             start,
@@ -1027,7 +1088,12 @@ fn default_clip(id: String, track_id: String, media: &MediaItem, start: f64) -> 
 /// the new clip slots in and nothing is covered (#129). Returns where the
 /// new clip lands. A drop with room to spare changes nothing.
 fn ripple_room_for(timeline: &mut Timeline, track_id: &str, start: f64, media: &MediaItem) -> f64 {
-    let duration = clip_length(media);
+    ripple_room(timeline, track_id, start, clip_length(media))
+}
+
+/// [`ripple_room_for`] for a clip `duration` long, whatever its item's
+/// length: a span of it.
+fn ripple_room(timeline: &mut Timeline, track_id: &str, start: f64, duration: f64) -> f64 {
     // Dropped onto a clip: after it, rather than over it or through it.
     let start = timeline
         .clips

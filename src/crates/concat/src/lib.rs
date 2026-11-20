@@ -536,6 +536,7 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
         editor.set_stage_items(ModelRc::from(models.stage.clone()));
         editor.set_stage_guides(ModelRc::from(models.guides.clone()));
         editor.set_media(ModelRc::from(models.media.clone()));
+        editor.set_scenes_cards(ModelRc::from(models.scene_cards.clone()));
         editor.set_video_effects(ModelRc::from(models.video_effects.clone()));
         editor.set_audio_effects(ModelRc::from(models.audio_effects.clone()));
         editor.set_catalogue_effects(ModelRc::from(models.catalogue_effects.clone()));
@@ -1087,6 +1088,34 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     }));
     editor.on_media_clear_picks(on_window!(|state| {
         state.handle(Msg::Media(MediaMsg::ClearPicks));
+    }));
+    // Fork: the Scenes sheet - a film's scenes picked and laid down.
+    editor.on_scenes_open(on_window!(|state| {
+        state.scenes_open();
+    }));
+    editor.on_scenes_close(on_window!(|state| {
+        state.scenes_close();
+    }));
+    editor.on_scenes_page_to(on_window!(|state, page: i32| {
+        state.scenes_page_to(page);
+    }));
+    editor.on_scenes_pick(on_window!(|state, scene: i32| {
+        state.scenes_pick(scene);
+    }));
+    editor.on_scenes_clear_picks(on_window!(|state| {
+        state.scenes_clear_picks();
+    }));
+    editor.on_scenes_add(on_window!(|state, at_end: bool| {
+        state.scenes_add(at_end);
+    }));
+    editor.on_scenes_detect(on_window!(|state, threshold: f32, min_seconds: f32| {
+        state.scenes_detect(threshold, min_seconds);
+    }));
+    editor.on_scenes_paint(on_window!(|state| {
+        state.scenes_paint();
+    }));
+    editor.on_scenes_cancel(on_window!(|state| {
+        state.scenes_cancel();
     }));
     editor.on_library_add_text(on_window!(|state, preset: SharedString| {
         state.place_at_playhead(&format!("text:{preset}:Title"));

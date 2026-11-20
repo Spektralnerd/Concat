@@ -31,12 +31,12 @@ pub mod editor;
 pub mod model;
 pub mod placement;
 pub mod reframe;
-pub mod transition_fit;
 pub mod runs;
 pub mod speed;
 #[cfg(test)]
 mod speed_curve_tests;
 pub mod srt;
+pub mod transition_fit;
 pub mod unread;
 
 pub use commands::{
@@ -4967,6 +4967,42 @@ mod tests {
                 .duration,
             1.0 / 60.0
         );
+    }
+
+    #[test]
+    fn spans_land_end_to_end_showing_their_stretches() {
+        let (mut editor, media_id, clip_id) = fixture();
+        let track_id = editor.project().active().tracks[0].id.clone();
+        let span = |source_start: f64, duration: f64| crate::commands::ClipSpan {
+            media_id: media_id.clone(),
+            source_start,
+            duration,
+        };
+        // Inserted at 4 s into the ten-second clip, with the lane making
+        // room: the clip's tail moves along by the two spans.
+        let first = editor
+            .apply(Command::AddClipSpans {
+                spans: vec![span(2.5, 1.5), span(7.0, 9.0)],
+                track_id: Some(track_id.clone()),
+                start: 10.0,
+                ripple: true,
+            })
+            .expect("adds")
+            .created_id
+            .expect("id");
+        let timeline = editor.project().active();
+        let a = timeline.clip(&first).expect("exists");
+        assert_eq!((a.start, a.source_start, a.duration), (10.0, 2.5, 1.5));
+        let b = timeline
+            .clips
+            .iter()
+            .find(|clip| clip.id != first && clip.id != clip_id)
+            .expect("the second span");
+        // Held to the three seconds the item has left after its in-point.
+        assert_eq!((b.start, b.source_start, b.duration), (11.5, 7.0, 3.0));
+        assert_eq!(b.track_id, track_id);
+        assert!(editor.undo(), "undoes");
+        assert_eq!(editor.project().active().clips.len(), 1, "one undo step");
     }
 
     #[test]

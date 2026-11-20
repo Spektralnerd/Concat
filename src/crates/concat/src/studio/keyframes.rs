@@ -1966,6 +1966,25 @@ impl Studio {
         );
         editor.set_media_selected_count(self.media.selected.len() as i32);
         editor.set_media_unused_count(self.project().unused_media().len() as i32);
+        // Fork: the Scenes sheet.
+        editor.set_media_film_picked(self.scenes_offered());
+        let scenes = self.scenes_readout();
+        editor.set_scenes_title(scenes.title.into());
+        editor.set_scenes_note(scenes.note.into());
+        editor.set_scenes_loading(scenes.loading);
+        editor.set_scenes_listed(scenes.listed);
+        editor.set_scenes_pictured(scenes.pictured);
+        sync(&models.scene_cards, scenes.cards);
+        editor.set_scenes_page(scenes.page);
+        editor.set_scenes_pages(scenes.pages);
+        editor.set_scenes_picked_count(scenes.picked);
+        editor.set_scenes_busy(scenes.busy);
+        editor.set_scenes_busy_here(scenes.busy_here);
+        editor.set_scenes_progress(scenes.progress);
+        editor.set_scenes_progress_text(scenes.progress_text.into());
+        editor.set_scenes_threshold(scenes.threshold);
+        editor.set_scenes_min_seconds(scenes.min_seconds);
+        editor.set_scenes_aspect(scenes.aspect);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);

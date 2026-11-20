@@ -5,7 +5,7 @@ import { I18n } from "../i18n.slint";
 import { Theme } from "../theme/theme.slint";
 import { Fmt } from "../util.slint";
 import { Glyph, Icon } from "../icons.slint";
-import { Editor } from "../editor.slint";
+import { Editor, SceneCardData } from "../editor.slint";
 import { Lanes } from "../timeline/lanes.slint";
 import { ClipField, ClipKind, SelectedClipData } from "../timeline/model.slint";
 import { Param, ParamFormat, SwitchRow } from "../inspector/controls.slint";
@@ -26,6 +26,9 @@ import { RoundButton, ToolItem, ToolStrip } from "controls.slint";
 import { PhoneSheet } from "sheet.slint";
 import { PhoneCanvas } from "canvas.slint";
 import { Sounds, SoundList, VoiceList } from "../workspace/audio-page.slint";
+import { NumberField } from "../primitives/number-field.slint";
+import { Progress } from "../primitives/modal.slint";
+import { Focus } from "../util.slint";
 
 // The editor as a phone shows it: one screen, held upright, driven by a
 // finger. Shown in place of the title strip and the dock wherever the
@@ -111,6 +114,164 @@ component PhoneMediaGrid inherits Rectangle {
             font-weight: Theme.weight-title;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+}
+
+/// Fork: a page of a film's scenes for a finger, as the bin's grid is: a tap
+/// picks a scene or lets it go, and a picked one wears its place in the
+/// order the Add lays them down in. Each card is the scene's middle, its
+/// number, where it starts in the film and how long it is.
+component PhoneSceneGrid inherits Rectangle {
+    in property <[SceneCardData]> cards;
+    /// The pictures' height over their width: the film's.
+    in property <float> aspect: 0.5625;
+
+    callback picked(index: int);
+
+    property <length> gap: 8px;
+    property <int> cols: 3;
+    property <length> card-w: (root.width - (root.cols - 1) * root.gap) / root.cols;
+    property <length> picture-h: root.card-w * Math.clamp(root.aspect, 0.3, 1.8);
+    property <length> card-h: root.picture-h + 4px + 16px;
+    property <int> rows: Math.ceil(root.cards.length / root.cols);
+
+    height: root.rows > 0 ? root.rows * (root.card-h + root.gap) - root.gap : 0px;
+
+    for card[index] in root.cards: Rectangle {
+        x: Math.mod(index, root.cols) * (root.card-w + root.gap);
+        y: Math.floor(index / root.cols) * (root.card-h + root.gap);
+        width: root.card-w;
+        height: root.card-h;
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: root.picture-h;
+            border-radius: Theme.r;
+            clip: true;
+            background: Theme.kind-video-well;
+            border-width: card.pick > 0 ? 2px : 0px;
+            border-color: Theme.accent;
+
+            if card.pictured: Image {
+                width: parent.width;
+                height: parent.height;
+                source: card.picture;
+                image-fit: cover;
+            }
+            if !card.pictured: Text {
+                text: card.number;
+                color: Theme.fg-dim;
+                font-size: Theme.fs-xl;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            // The scene's number, over the picture's corner.
+            if card.pictured: Rectangle {
+                x: 4px;
+                y: 4px;
+                width: number.preferred-width + 10px;
+                height: 18px;
+                border-radius: 9px;
+                background: #0000008c;
+
+                number := Text {
+                    text: card.number;
+                    color: #ffffff;
+                    font-size: Theme.fs-sm;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            // The pick's mark, as the bin's cards wear it.
+            Rectangle {
+                x: parent.width - self.width - 4px;
+                y: 4px;
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                background: card.pick > 0 ? Theme.accent : #00000059;
+                border-width: card.pick > 0 ? 0px : 1.5px;
+                border-color: #ffffffd9;
+
+                if card.pick > 0: Text {
+                    text: card.pick;
+                    color: Theme.on-accent;
+                    font-size: Theme.fs-sm;
+                    font-weight: Theme.weight-title;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        Text {
+            x: 0;
+            y: root.picture-h + 4px;
+            width: parent.width;
+            height: 16px;
+            text: card.time + " · " + card.length;
+            color: Theme.fg-dim;
+            font-size: Theme.fs-sm;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            clicked => { root.picked(card.index); }
+        }
+    }
+}
+
+/// Fork: a page's way back and on through a film's scenes - ten pages at a
+/// time and one - with where it is between.
+component ScenePages inherits HorizontalLayout {
+    spacing: 6px;
+
+    for step in [-10, -1]: Rectangle {
+        width: 48px;
+        height: 40px;
+        border-radius: Theme.r;
+        opacity: Editor.scenes-page > 0 ? 1 : 0.4;
+        background: back.pressed ? Theme.field-active : Theme.field;
+        Text {
+            text: step == -10 ? "«" : "‹";
+            color: Theme.fg;
+            font-size: Theme.fs-xl;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        back := TouchArea {
+            clicked => { Editor.scenes-page-to(Editor.scenes-page + step); }
+        }
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: I18n.t2("scenes.page", Editor.scenes-page + 1, Editor.scenes-pages);
+        color: Theme.fg;
+        font-size: Theme.fs;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    for step in [1, 10]: Rectangle {
+        width: 48px;
+        height: 40px;
+        border-radius: Theme.r;
+        opacity: Editor.scenes-page + 1 < Editor.scenes-pages ? 1 : 0.4;
+        background: on.pressed ? Theme.field-active : Theme.field;
+        Text {
+            text: step == 10 ? "»" : "›";
+            color: Theme.fg;
+            font-size: Theme.fs-xl;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        on := TouchArea {
+            clicked => { Editor.scenes-page-to(Editor.scenes-page + step); }
         }
     }
 }
@@ -421,10 +582,16 @@ export component PhoneEditor inherits Rectangle {
     }
 
     function show(name: string, needs-clip: bool) {
+        if (root.sheet == "scenes" && name != "scenes") {
+            Editor.scenes-close();
+        }
         root.sheet = name;
         root.sheet-needs-clip = needs-clip;
     }
     function hide() {
+        if (root.sheet == "scenes") {
+            Editor.scenes-close();
+        }
         root.sheet = "";
         root.sheet-needs-clip = false;
     }
@@ -456,6 +623,7 @@ export component PhoneEditor inherits Rectangle {
             : name == "clip-layer" ? I18n.t("configPane.filter")
             : name == "clip-mask" ? I18n.t("mask.title")
             : name == "clip-animate" ? I18n.t("motion.animate")
+            : name == "scenes" ? Editor.scenes-title
             : "";
     }
 
@@ -1282,6 +1450,112 @@ export component PhoneEditor inherits Rectangle {
             }
         }
 
+        // ── Fork: a film's scenes, from the list beside it or found
+        // here, picked and laid down as clips of the film ──
+        if root.sheet == "scenes": VerticalLayout {
+            padding: 12px;
+            spacing: 12px;
+
+            SheetNote {
+                text: Editor.scenes-note;
+            }
+
+            // A film being read through: how far, and a stop for this one.
+            if Editor.scenes-busy: VerticalLayout {
+                spacing: 8px;
+
+                Text {
+                    text: Editor.scenes-progress-text;
+                    color: Theme.fg;
+                    font-size: Theme.fs;
+                    wrap: word-wrap;
+                }
+                if Editor.scenes-busy-here: Progress {
+                    height: 6px;
+                    value: Editor.scenes-progress;
+                    live: true;
+                }
+                if Editor.scenes-busy-here: SheetButton {
+                    glyph: Glyph.stop;
+                    label: I18n.t("scenes.stop");
+                    clicked => { Editor.scenes-cancel(); }
+                }
+            }
+
+            if Editor.scenes-listed && Editor.scenes-pages > 1: ScenePages { }
+            if Editor.scenes-listed: PhoneSceneGrid {
+                cards: Editor.scenes-cards;
+                aspect: Editor.scenes-aspect;
+                picked(index) => { Editor.scenes-pick(index); }
+            }
+            if Editor.scenes-listed && Editor.scenes-pages > 1: ScenePages { }
+
+            // The detection's two knobs and its button: the first thing on
+            // a sheet with no list, the last on one with.
+            if !Editor.scenes-loading && !Editor.scenes-busy: VerticalLayout {
+                spacing: 8px;
+
+                SheetNote {
+                    text: I18n.t("scenes.knobsNote");
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: I18n.t("scenes.threshold");
+                        color: Theme.fg;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                    threshold := NumberField {
+                        width: 76px;
+                        height: 40px;
+                        value: Editor.scenes-threshold;
+                        minimum: 0.1;
+                        maximum: 255;
+                        step: 1;
+                        precision: 1;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text {
+                        text: I18n.t("scenes.shortest");
+                        color: Theme.fg;
+                        font-size: Theme.fs;
+                        vertical-alignment: center;
+                    }
+                    shortest := NumberField {
+                        width: 76px;
+                        height: 40px;
+                        value: Editor.scenes-min-seconds;
+                        minimum: 0;
+                        maximum: 600;
+                        step: 0.1;
+                        precision: 2;
+                        unit: "s";
+                    }
+                }
+                SheetButton {
+                    glyph: Glyph.sparkle;
+                    primary: !Editor.scenes-listed;
+                    label: Editor.scenes-listed ? I18n.t("scenes.again") : I18n.t("scenes.detect");
+                    clicked => {
+                        Editor.scenes-detect(threshold.current, shortest.current);
+                        Focus.release();
+                    }
+                }
+                // A list made elsewhere, with no pictures of its own.
+                if Editor.scenes-listed && !Editor.scenes-pictured: SheetButton {
+                    glyph: Glyph.image;
+                    label: I18n.t("scenes.paint");
+                    clicked => { Editor.scenes-paint(); }
+                }
+            }
+
+            // Room under the last row for the Add bar over it.
+            if Editor.scenes-picked-count > 0: Rectangle {
+                height: root.add-bar-h - 12px;
+            }
+        }
+
         // ── the user's own sounds: brought in from the phone's files,
         // played with a tap, laid at the playhead with the plus ──
         if root.sheet == "audio": VerticalLayout {
@@ -1795,6 +2069,18 @@ export component PhoneEditor inherits Rectangle {
                 }
             }
 
+            // Fork: the picked film's scenes, to lay down a scene at a
+            // time rather than the whole film.
+            if Editor.media-film-picked: SheetButton {
+                horizontal-stretch: 0;
+                glyph: Glyph.film;
+                label: I18n.t("scenes.button");
+                clicked => {
+                    Editor.scenes-open();
+                    root.show("scenes", false);
+                }
+            }
+
             // Fork: what is picked leaves the project, with the clips that
             // play it; Undo brings it all back.
             SheetButton {
@@ -1802,6 +2088,51 @@ export component PhoneEditor inherits Rectangle {
                 glyph: Glyph.trash;
                 label: I18n.t("common.remove");
                 clicked => { Editor.media-remove-selected(); }
+            }
+        }
+    }
+
+    // ── Fork: the scenes' Add bar ────────────────────────────────────
+    //
+    // As the bin's: pinned to the foot while scenes are picked. The sheet
+    // stays up after an Add, so the next scenes can be picked from the
+    // same page.
+    if root.sheet == "scenes" && Editor.scenes-picked-count > 0: Rectangle {
+        x: 0;
+        y: root.height - root.add-bar-h + sheet.drag;
+        width: root.width;
+        height: root.add-bar-h;
+        background: Theme.panel;
+
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 1px;
+            background: Theme.line;
+        }
+
+        TouchArea { }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 12px;
+            padding-bottom: 12px;
+            spacing: 8px;
+
+            SheetButton {
+                horizontal-stretch: 1;
+                glyph: Glyph.plus;
+                primary: true;
+                label: I18n.t1("scenes.add", Editor.scenes-picked-count);
+                clicked => { Editor.scenes-add(root.media-at-end); }
+            }
+            SheetButton {
+                horizontal-stretch: 0;
+                glyph: Glyph.close;
+                label: I18n.t("scenes.unpick");
+                clicked => { Editor.scenes-clear-picks(); }
             }
         }
     }

@@ -69,6 +69,7 @@ mod placing;
 mod project_files;
 mod project_zip;
 mod publish;
+mod scenes;
 mod smooth;
 mod speech;
 #[cfg(test)]
@@ -738,6 +739,8 @@ pub struct Models {
     pub stage: Rc<VecModel<StageItemData>>,
     pub guides: Rc<VecModel<StageGuideData>>,
     pub media: Rc<VecModel<MediaItemData>>,
+    /// Fork: the Scenes sheet's page of a film's scenes.
+    pub scene_cards: Rc<VecModel<SceneCardData>>,
     pub video_effects: Rc<VecModel<EffectData>>,
     pub audio_effects: Rc<VecModel<EffectData>>,
     /// The catalogue's shelves, one list per kind, and the shelf labels.
@@ -849,6 +852,7 @@ impl Models {
             stage: Rc::new(VecModel::default()),
             guides: Rc::new(VecModel::default()),
             media: Rc::new(VecModel::default()),
+            scene_cards: Rc::new(VecModel::default()),
             video_effects: Rc::new(VecModel::default()),
             audio_effects: Rc::new(VecModel::default()),
             catalogue_effects: Rc::new(VecModel::default()),
@@ -1292,6 +1296,9 @@ pub struct Studio {
     /// got; and each one's stop. See `beats`.
     beat_jobs: HashMap<String, f32>,
     beat_cancels: HashMap<String, Arc<std::sync::atomic::AtomicBool>>,
+    /// Fork: the Scenes sheet's film and what is known of its scenes, while
+    /// the sheet is up. See `scenes`.
+    scenes: Option<scenes::ScenesView>,
     /// The beat grids drawn over the clips on the lanes, by what each was
     /// drawn for; see `Studio::beat_paths`.
     beat_marks: RefCell<HashMap<String, (SharedString, SharedString)>>,
@@ -1962,7 +1969,8 @@ fn command_kind(command: &Command) -> &'static str {
         Command::Batch { .. } => "Several edits",
         Command::AddClip { .. }
         | Command::AddClipAtFirstFree { .. }
-        | Command::AddClipsInSequence { .. } => "Add to timeline",
+        | Command::AddClipsInSequence { .. }
+        | Command::AddClipSpans { .. } => "Add to timeline",
         Command::AddTextClip { .. } => "Add text",
         Command::AddShapeClip { .. } => "Add shape",
         Command::AddLayerClip { sound: true, .. } => "Add audio effect layer",
@@ -2144,6 +2152,9 @@ fn command_words(command: &Command) -> String {
         Command::AddClipsInSequence {
             media_ids, start, ..
         } => format!("{kind} {} at {start:.2} s", clips_of(media_ids.len())),
+        Command::AddClipSpans { spans, start, .. } => {
+            format!("{kind} {} at {start:.2} s", clips_of(spans.len()))
+        }
         Command::AddLayerClip {
             start, effect_id, ..
         } => format!("{kind} {effect_id} at {start:.2} s"),
@@ -3236,6 +3247,7 @@ impl Studio {
             stabilize_jobs: HashMap::new(),
             beat_jobs: HashMap::new(),
             beat_cancels: HashMap::new(),
+            scenes: None,
             beat_marks: RefCell::new(HashMap::new()),
             voice_jobs: HashMap::new(),
             voice_cancel: None,

@@ -358,48 +358,8 @@ impl MediaBin {
                 .media_by_id(id)
                 .is_some_and(|item| item.kind == model::MediaKind::Audio)
         });
-        let timeline = studio.timeline();
-        let playhead = f64::from(studio.playhead.max(0.0));
-        let lane = if sound {
-            None
-        } else {
-            timeline.background_lane().map(str::to_owned)
-        };
-        let (track_id, start, ripple) = match lane {
-            Some(lane) => {
-                let end = timeline
-                    .clips
-                    .iter()
-                    .filter(|clip| clip.track_id == lane)
-                    .map(|clip| clip.start + clip.duration)
-                    .fold(0.0, f64::max);
-                // Under a clip, the nearer of its two edges: a playhead a
-                // second into a long take means before it, not after it.
-                let start = if at_end {
-                    end
-                } else {
-                    timeline
-                        .clips
-                        .iter()
-                        .find(|clip| {
-                            clip.track_id == lane
-                                && clip.start < playhead
-                                && playhead < clip.start + clip.duration
-                        })
-                        .map_or(playhead.min(end), |clip| {
-                            if playhead - clip.start < clip.duration / 2.0 {
-                                clip.start
-                            } else {
-                                clip.start + clip.duration
-                            }
-                        })
-                };
-                (Some(lane), start, true)
-            }
-            None if at_end && !sound => (None, f64::from(studio.duration()), false),
-            None => (None, playhead, false),
-        };
-        let before: HashSet<String> = timeline.clips.iter().map(|clip| clip.id.clone()).collect();
+        let (track_id, start, ripple) = add_place(studio, sound, at_end);
+        let before = clip_ids(studio);
         // Onto the timeline: the monitor goes back to it.
         studio.close_source();
         studio.apply(Command::AddClipsInSequence {
@@ -408,24 +368,21 @@ impl MediaBin {
             start,
             ripple,
         });
-        let landed = studio
-            .timeline()
-            .clips
-            .iter()
-            .filter(|clip| !before.contains(&clip.id))
-            .map(|clip| clip.start + clip.duration)
-            .fold(None, |end: Option<f64>, at| {
-                Some(end.map_or(at, |end| end.max(at)))
-            });
         self.selected.clear();
         self.picked.clear();
-        // A frame short of the end, so the monitor shows the last of what
-        // landed rather than the black past it, and the next Add - nearer
-        // that clip's end than its start - follows on after it.
-        if let Some(end) = landed {
-            let frame = 1.0 / f64::from(studio.frame_rate().max(1.0));
-            studio.seek((end - frame).max(0.0) as f32);
+        follow_landed(studio, &before);
+    }
+
+    /// Fork: the one file picked, when it is a film: what the Scenes sheet
+    /// opens on.
+    pub fn sole_film<'a>(&self, project: &'a Project) -> Option<&'a MediaItem> {
+        if self.selected.len() != 1 {
+            return None;
         }
+        let id = self.selected.iter().next()?;
+        project
+            .media_by_id(id)
+            .filter(|item| item.kind == model::MediaKind::Video)
     }
 
     /// Gives every media item the integer row Slint knows it by. New items
@@ -600,6 +557,90 @@ fn media_kind_of(kind: model::MediaKind) -> MediaKind {
         model::MediaKind::Video => MediaKind::Video,
         model::MediaKind::Audio => MediaKind::Audio,
         model::MediaKind::Image => MediaKind::Image,
+    }
+}
+
+/// Where the phone's Add lays what it adds: pictures onto the main lane -
+/// the lowest one holding a picture - inserted where the playhead is (at
+/// the nearer edge of the clip under it, the rest of the lane moved along
+/// to make room) or after the lane's last clip (`at_end`), never past it
+/// into a gap; a timeline with no picture yet starts one. Anything with a
+/// sound file in it (`sound`) keeps the desk's rule, on the lowest lane
+/// free at the playhead for the whole run, since a song inserted into the
+/// picture would push the cut apart. The lane, the start and whether the
+/// lane makes room.
+pub(crate) fn add_place(studio: &Studio, sound: bool, at_end: bool) -> (Option<String>, f64, bool) {
+    let timeline = studio.timeline();
+    let playhead = f64::from(studio.playhead.max(0.0));
+    let lane = if sound {
+        None
+    } else {
+        timeline.background_lane().map(str::to_owned)
+    };
+    match lane {
+        Some(lane) => {
+            let end = timeline
+                .clips
+                .iter()
+                .filter(|clip| clip.track_id == lane)
+                .map(|clip| clip.start + clip.duration)
+                .fold(0.0, f64::max);
+            // Under a clip, the nearer of its two edges: a playhead a
+            // second into a long take means before it, not after it.
+            let start = if at_end {
+                end
+            } else {
+                timeline
+                    .clips
+                    .iter()
+                    .find(|clip| {
+                        clip.track_id == lane
+                            && clip.start < playhead
+                            && playhead < clip.start + clip.duration
+                    })
+                    .map_or(playhead.min(end), |clip| {
+                        if playhead - clip.start < clip.duration / 2.0 {
+                            clip.start
+                        } else {
+                            clip.start + clip.duration
+                        }
+                    })
+            };
+            (Some(lane), start, true)
+        }
+        None if at_end && !sound => (None, f64::from(studio.duration()), false),
+        None => (None, playhead, false),
+    }
+}
+
+/// The ids of every clip on the active timeline, to tell what an Add laid
+/// down afterwards.
+pub(crate) fn clip_ids(studio: &Studio) -> HashSet<String> {
+    studio
+        .timeline()
+        .clips
+        .iter()
+        .map(|clip| clip.id.clone())
+        .collect()
+}
+
+/// Moves the playhead a frame short of the end of what landed since
+/// `before` - so the monitor shows the last of it rather than the black
+/// past it, and the next Add, nearer that clip's end than its start,
+/// follows on after it.
+pub(crate) fn follow_landed(studio: &mut Studio, before: &HashSet<String>) {
+    let landed = studio
+        .timeline()
+        .clips
+        .iter()
+        .filter(|clip| !before.contains(&clip.id))
+        .map(|clip| clip.start + clip.duration)
+        .fold(None, |end: Option<f64>, at| {
+            Some(end.map_or(at, |end| end.max(at)))
+        });
+    if let Some(end) = landed {
+        let frame = 1.0 / f64::from(studio.frame_rate().max(1.0));
+        studio.seek((end - frame).max(0.0) as f32);
     }
 }
 
