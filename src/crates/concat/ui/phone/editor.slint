@@ -253,6 +253,68 @@ component PhoneSceneGrid inherits Rectangle {
     }
 }
 
+/// Fork: a step of the Ausschnitt sheet - a frame or a second either way -
+/// that goes on stepping while it is held, slowly and then quicker. `down`
+/// and `up` frame a hold, so all its steps are one to undo.
+component StepButton inherits Rectangle {
+    in property <string> label;
+    in property <Glyph> glyph;
+
+    callback clicked();
+    callback down();
+    callback up();
+
+    height: 44px;
+    horizontal-stretch: 1;
+    border-radius: Theme.r;
+    background: touch.pressed ? Theme.field-active : Theme.field;
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 4px;
+
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                glyph: root.glyph;
+                size: 14px;
+                tint: Theme.fg;
+            }
+        }
+        Text {
+            text: root.label;
+            color: Theme.fg;
+            font-size: Theme.fs;
+            font-weight: Theme.weight-title;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down
+                && event.button == PointerEventButton.left) {
+                root.down();
+                held.fast = false;
+                root.clicked();
+            } else if (event.kind == PointerEventKind.up
+                || event.kind == PointerEventKind.cancel) {
+                root.up();
+            }
+        }
+    }
+
+    held := Timer {
+        property <bool> fast;
+        interval: self.fast ? 90ms : 450ms;
+        running: touch.pressed;
+        triggered => {
+            self.fast = true;
+            root.clicked();
+        }
+    }
+}
+
 /// Fork: one of a row of choices, lit while it is the one chosen.
 component ChoicePill inherits Rectangle {
     in property <string> label;
@@ -678,6 +740,7 @@ export component PhoneEditor inherits Rectangle {
             : name == "clip-animate" ? I18n.t("motion.animate")
             : name == "scenes" ? Editor.scenes-title
             : name == "clip-cuts" ? I18n.t("cuts.title")
+            : name == "clip-slip" ? I18n.t("slip.title")
             : "";
     }
 
@@ -698,7 +761,9 @@ export component PhoneEditor inherits Rectangle {
     property <length> transport-y: root.lanes-y - root.transport-h;
     /// How tall the sheet is when one is up. The bin's is lower: it is a
     /// grid to pick from, and the picture is what the picks are judged in.
-    property <length> sheet-h: root.sheet == "media" ? root.height * 0.52 : root.height * 0.6;
+    property <length> sheet-h: root.sheet == "media" ? root.height * 0.52
+        : root.sheet == "clip-slip" ? Math.max(root.height * 0.38, 310px)
+        : root.height * 0.6;
     /// The foot of the monitor: the transport's head, or the sheet's while
     /// one is up - the monitor shrinks to the room left above the sheet
     /// rather than going under it, so the whole picture stays in view
@@ -1363,6 +1428,17 @@ export component PhoneEditor inherits Rectangle {
                 label: I18n.t("cuts.title");
                 current: root.sheet == "clip-cuts";
                 clicked => { root.show("clip-cuts", true); }
+            }
+            // Fork: another stretch of the clip's footage in the same place.
+            if (root.is-video || root.is-audio) && Editor.selected-clip.slip-footage
+                && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.film;
+                label: I18n.t("slip.title");
+                current: root.sheet == "clip-slip";
+                clicked => {
+                    root.show("clip-slip", true);
+                    Editor.slip-open();
+                }
             }
             // In, Out and Loop: the moves a clip, a title or a shape makes.
             if root.is-picture || root.is-text || root.is-shape: ToolItem {
@@ -2074,6 +2150,140 @@ export component PhoneEditor inherits Rectangle {
                 glyph: Glyph.trash;
                 label: I18n.t("cuts.clear");
                 clicked => { Editor.cuts-clear(); }
+            }
+        }
+
+        // ── Fork: another stretch of the clip's footage in the same place ──
+        if root.sheet == "clip-slip": VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+
+            SheetNote {
+                text: I18n.t("slip.what");
+            }
+
+            // Its first and last frame in the film, and which scene.
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: Editor.selected-clip.slip-span;
+                    color: Theme.fg;
+                    font-size: Theme.fs-lg;
+                    font-weight: Theme.weight-title;
+                    horizontal-alignment: center;
+                }
+                if Editor.selected-clip.slip-note != "": Text {
+                    text: Editor.selected-clip.slip-note;
+                    color: Theme.fg-dim;
+                    font-size: Theme.fs;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            // The film around the clip, its cuts as lines, the stretch the
+            // clip shows lit: a finger anywhere along it moves the stretch.
+            Rectangle {
+                height: 56px;
+                border-radius: Theme.r;
+                background: Theme.field;
+                clip: true;
+
+                Path {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    commands: Editor.selected-clip.slip-marks;
+                    viewbox-width: 1000;
+                    viewbox-height: 100;
+                    stroke: Theme.fg-dim;
+                    stroke-width: 1.5px;
+                }
+                Rectangle {
+                    x: parent.width * Editor.selected-clip.slip-start;
+                    y: 0;
+                    width: Math.max(6px,
+                        parent.width * (Editor.selected-clip.slip-end - Editor.selected-clip.slip-start));
+                    height: parent.height;
+                    border-radius: Theme.r;
+                    background: Theme.accent.with-alpha(0.3);
+                    border-width: 2px;
+                    border-color: Theme.accent;
+                }
+                TouchArea {
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down) {
+                            Editor.slip-begin();
+                        } else if (event.kind == PointerEventKind.up
+                            || event.kind == PointerEventKind.cancel) {
+                            Editor.slip-end();
+                        }
+                    }
+                    moved => {
+                        Editor.slip-drag((self.mouse-x - self.pressed-x) / 1px, self.width / 1px);
+                    }
+                }
+            }
+
+            // Exactly: a second or a frame either way, held to go on.
+            HorizontalLayout {
+                spacing: 6px;
+                StepButton {
+                    glyph: Glyph.skip-back;
+                    label: I18n.t("slip.secondBack");
+                    down => { Editor.slip-begin(); }
+                    up => { Editor.slip-end(); }
+                    clicked => { Editor.slip-nudge(0, -1); }
+                }
+                StepButton {
+                    glyph: Glyph.step-back;
+                    label: I18n.t("slip.frameBack");
+                    down => { Editor.slip-begin(); }
+                    up => { Editor.slip-end(); }
+                    clicked => { Editor.slip-nudge(-1, 0); }
+                }
+                StepButton {
+                    glyph: Glyph.step-forward;
+                    label: I18n.t("slip.frameOn");
+                    down => { Editor.slip-begin(); }
+                    up => { Editor.slip-end(); }
+                    clicked => { Editor.slip-nudge(1, 0); }
+                }
+                StepButton {
+                    glyph: Glyph.skip-forward;
+                    label: I18n.t("slip.secondOn");
+                    down => { Editor.slip-begin(); }
+                    up => { Editor.slip-end(); }
+                    clicked => { Editor.slip-nudge(0, 1); }
+                }
+            }
+
+            // The clip's own frames on the monitor: its first, played, its
+            // last.
+            HorizontalLayout {
+                spacing: 6px;
+                SheetButton {
+                    horizontal-stretch: 1;
+                    label: I18n.t("slip.first");
+                    clicked => { Editor.slip-look(0); }
+                }
+                SheetButton {
+                    horizontal-stretch: 1;
+                    glyph: Editor.playing ? Glyph.pause : Glyph.play;
+                    primary: true;
+                    label: I18n.t("slip.play");
+                    clicked => { Editor.slip-look(2); }
+                }
+                SheetButton {
+                    horizontal-stretch: 1;
+                    label: I18n.t("slip.last");
+                    clicked => { Editor.slip-look(1); }
+                }
+            }
+
+            if Editor.selected-clip.slip-copy: SheetNote {
+                text: I18n.t("slip.copy");
             }
         }
 

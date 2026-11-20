@@ -558,6 +558,20 @@ export struct SelectedClipData {
     cuts-count: int,
     cuts-hidden: bool,
 
+    // Fork: the stretch of its footage the clip shows, for the Ausschnitt
+    // sheet: whether it has footage to move through; its first and last
+    // frame; which of the film's scenes it shows; where it lies on the
+    // sheet's strip of the film, 0..1; the film's cuts on the strip, as
+    // path commands in a box 1000 by 100; and whether it shows a copy of
+    // only its own stretch
+    slip-footage: bool,
+    slip-span: string,
+    slip-note: string,
+    slip-start: float,
+    slip-end: float,
+    slip-marks: string,
+    slip-copy: bool,
+
     // Enhance writing this clip's enhanced copy: -1 when it is not, else
     // how far along, and whether that is the model downloading rather
     // than frames being restored

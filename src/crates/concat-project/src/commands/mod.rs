@@ -689,6 +689,20 @@ pub enum Command {
         /// Where each clip is going.
         moves: Vec<ClipMove>,
     },
+    /// Fork: shows another stretch of a clip's footage in the same place -
+    /// a slip. The clip keeps its start, its length, its speed and all
+    /// that is timed on it, so it still fills the gap it was cut to and
+    /// its neighbours never move; only the moment of the footage it starts
+    /// at moves, to `source_start`. Held to the footage there is: never
+    /// before its first frame, nor so late that the clip would run past
+    /// its last. A clip with no footage to move through - a still, a
+    /// title, a shape - is left as it is, as is an unknown one.
+    SlipClip {
+        /// The clip to slip.
+        clip_id: String,
+        /// Where in its footage it is to start, in seconds.
+        source_start: f64,
+    },
     /// Drags one edge of a clip. A head trim moves the in-point with the
     /// edge (scaled by speed) so the remaining pixels do not slide; either
     /// edge stops at the sixtieth-of-a-second minimum duration. An unknown
@@ -1343,6 +1357,7 @@ impl Command {
                 .is_some_and(|voice| bad([voice.voice, voice.background])),
             Command::MoveClips { moves } => bad(moves.iter().map(|wanted| wanted.start)),
             Command::TrimClip { delta, .. } => bad([*delta]),
+            Command::SlipClip { source_start, .. } => bad([*source_start]),
             Command::SplitClips { time, .. } => bad([*time]),
             Command::FreezeFrame { time, duration, .. } => bad([*time]) || bad(*duration),
             Command::ReplaceClipMedia {
@@ -1506,6 +1521,7 @@ pub fn apply(
         | Command::AddTransitionClip { .. }
         | Command::MoveClips { .. }
         | Command::TrimClip { .. }
+        | Command::SlipClip { .. }
         | Command::SplitClips { .. }
         | Command::FreezeFrame { .. }
         | Command::ReplaceClipMedia { .. }

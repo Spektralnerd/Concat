@@ -238,14 +238,17 @@ impl Studio {
                     {
                         let mut studio = shell.studio.borrow_mut();
                         let end = studio.duration();
+                        // Fork: a clip played once from the Ausschnitt
+                        // sheet stops on its last frame.
+                        let stop = studio.play_until.map_or(end, |until| until.min(end));
                         let position = studio.host.playback.position_now() as f32;
                         let fps = studio.project().active().video.rate();
                         let frame = (f64::from(position) * fps + 1e-6).floor() as i64;
-                        if position < end && shown == Some(frame) {
+                        if position < stop && shown == Some(frame) {
                             return;
                         }
                         shown = Some(frame);
-                        studio.playhead = position.min(end);
+                        studio.playhead = position.min(stop);
                         // The view follows: a playhead that runs off the
                         // right edge, or sits off the left, pages the lanes
                         // to it, the way every editor keeps the cut in view.
@@ -267,6 +270,9 @@ impl Studio {
                         }
                         if position >= end {
                             studio.pause();
+                        } else if position >= stop {
+                            studio.pause();
+                            studio.request_preview();
                         } else {
                             studio.request_preview();
                         }
@@ -291,6 +297,7 @@ impl Studio {
         }
         let was_playing = self.playing;
         self.playing = false;
+        self.play_until = None;
         self.transport.stop();
         self.host.playback.pause();
         // The textures playback streamed through are let go once it stops.
@@ -315,6 +322,7 @@ impl Studio {
         }
         // The timeline was clicked: it has the monitor back.
         self.close_source();
+        self.play_until = None;
         self.playhead = seconds.max(0.0);
         if self.prefs.playhead_stops_at_end {
             self.playhead = self.playhead.min(self.duration().max(0.0));

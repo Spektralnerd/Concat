@@ -190,6 +190,17 @@ export global Editor {
     /// The picks laid into the rhythm's empty gaps from the playhead on.
     callback scenes-fill();
     callback scenes-fill-set(part: int, slow: bool);
+    /// Fork: the Ausschnitt sheet - another stretch of the selected clip's
+    /// footage in the same place. Opened; a finger down on the strip,
+    /// moved `moved` points along a strip `width` points wide, and up; a
+    /// step by frames of the footage and seconds; and a look at the clip's
+    /// first frame (0), its last (1), or the clip played once (2).
+    callback slip-open();
+    callback slip-begin();
+    callback slip-drag(moved: float, width: float);
+    callback slip-end();
+    callback slip-nudge(frames: int, seconds: float);
+    callback slip-look(what: int);
 
     // library catalogue pages
     /// The looks the Text page offers, published once.

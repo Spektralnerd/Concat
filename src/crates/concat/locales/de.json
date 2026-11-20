@@ -1231,5 +1231,17 @@
   "scenes.fillStart": "Anfang",
   "scenes.fillMiddle": "Mitte",
   "scenes.fillEnd": "Ende",
-  "scenes.fillSlow": "Kürzere Szenen verlangsamen, bis sie die Lücke füllen"
+  "scenes.fillSlow": "Kürzere Szenen verlangsamen, bis sie die Lücke füllen",
+  "slip.title": "Ausschnitt",
+  "slip.what": "Wische über den Streifen: Der Clip bleibt an seinem Platz und gleich lang und zeigt einen anderen Teil des Films.",
+  "slip.inScene": "Szene {0}",
+  "slip.acrossScenes": "Szenen {0} bis {1} · Schnitt nach {2} s",
+  "slip.secondBack": "1 s",
+  "slip.frameBack": "1 Bild",
+  "slip.frameOn": "1 Bild",
+  "slip.secondOn": "1 s",
+  "slip.first": "Anfang",
+  "slip.play": "Abspielen",
+  "slip.last": "Ende",
+  "slip.copy": "Der Clip zeigt eine Kopie nur seines Ausschnitts (flüssige Zeitlupe oder Verbessern). Schalte das aus, um durch den ganzen Film zu wandern."
 }

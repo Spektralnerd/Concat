@@ -33,6 +33,8 @@ pub mod placement;
 pub mod reframe;
 pub mod rhythm;
 pub mod runs;
+#[cfg(test)]
+mod slip_tests;
 pub mod speed;
 #[cfg(test)]
 mod speed_curve_tests;

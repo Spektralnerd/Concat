@@ -1250,5 +1250,17 @@
   "scenes.fillStart": "Start",
   "scenes.fillMiddle": "Middle",
   "scenes.fillEnd": "End",
-  "scenes.fillSlow": "Slow shorter scenes to fill their gap"
+  "scenes.fillSlow": "Slow shorter scenes to fill their gap",
+  "slip.title": "Excerpt",
+  "slip.what": "Swipe along the strip: the clip stays where it is and as long as it is, and shows another part of the film.",
+  "slip.inScene": "Scene {0}",
+  "slip.acrossScenes": "Scenes {0} to {1} · a cut {2} s in",
+  "slip.secondBack": "1 s",
+  "slip.frameBack": "1 frame",
+  "slip.frameOn": "1 frame",
+  "slip.secondOn": "1 s",
+  "slip.first": "Start",
+  "slip.play": "Play",
+  "slip.last": "End",
+  "slip.copy": "The clip shows a copy of only its own stretch (smooth slow motion or Enhance). Turn that off to move through the whole film."
 }

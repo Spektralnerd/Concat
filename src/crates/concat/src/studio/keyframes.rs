@@ -1224,6 +1224,7 @@ impl Studio {
         let (mask_rows, mask_index) = self.mask_rows(clip);
         let beats = self.beat_readout(clip);
         let cuts = self.cut_readout(clip);
+        let slip = self.slip_readout(clip);
         SelectedClipData {
             present: true,
             batch: targets.len() as i32,
@@ -1572,6 +1573,13 @@ impl Studio {
             cuts_found: cuts.found,
             cuts_count: cuts.count,
             cuts_hidden: cuts.hidden,
+            slip_footage: slip.footage,
+            slip_span: slip.span.into(),
+            slip_note: slip.note.into(),
+            slip_start: slip.start,
+            slip_end: slip.end,
+            slip_marks: slip.marks.into(),
+            slip_copy: slip.copy,
         }
     }
 

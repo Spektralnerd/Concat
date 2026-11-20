@@ -380,6 +380,40 @@ pub(super) fn apply(
             })
         }
 
+        Command::SlipClip {
+            clip_id,
+            source_start,
+        } => {
+            // How much footage there is to move through: none for a clip
+            // that is not cut from any.
+            let length = {
+                let timeline = project.active();
+                let Some(clip) = timeline.clip(&clip_id) else {
+                    return Ok(Outcome::default());
+                };
+                if !matches!(clip.kind, ClipKind::Video | ClipKind::Audio) {
+                    return Ok(Outcome::default());
+                }
+                let Some(media) = project.media_by_id(&clip.media_id) else {
+                    return Ok(Outcome::default());
+                };
+                clip_length(media)
+            };
+            let timeline = project.active_mut();
+            let Some(clip) = timeline.clip_mut(&clip_id) else {
+                return Ok(Outcome::default());
+            };
+            // What the clip plays of it, along its curve or at its rate,
+            // stays as it is; only where that starts moves.
+            let span = speed::source_consumed(clip, clip.duration).max(0.0);
+            let latest = (length - span).max(0.0);
+            let applied = assign(&mut clip.source_start, source_start.clamp(0.0, latest));
+            Ok(Outcome {
+                created_id: None,
+                applied,
+            })
+        }
+
         Command::TrimClip {
             clip_id,
             edge,

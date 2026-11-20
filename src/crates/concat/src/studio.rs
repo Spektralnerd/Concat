@@ -71,6 +71,7 @@ mod project_files;
 mod project_zip;
 mod publish;
 mod scenes;
+mod slip;
 mod smooth;
 mod speech;
 #[cfg(test)]
@@ -1304,6 +1305,14 @@ pub struct Studio {
     /// each has got, and each one's stop. See `cuts`.
     cut_jobs: HashMap<String, f32>,
     cut_cancels: HashMap<String, Arc<std::sync::atomic::AtomicBool>>,
+    /// Fork: the slip under the finger on the Ausschnitt sheet, and the
+    /// scene list of the film the sheet was opened on. See `slip`.
+    slip: Option<slip::SlipDrag>,
+    slip_scenes: Option<slip::SlipScenes>,
+    /// Fork: where playback stops of itself before the timeline's end - a
+    /// clip played once from the Ausschnitt sheet. A pause or a seek lets
+    /// it go.
+    play_until: Option<f32>,
     /// The beat grids drawn over the clips on the lanes, by what each was
     /// drawn for; see `Studio::beat_paths`.
     beat_marks: RefCell<HashMap<String, (SharedString, SharedString)>>,
@@ -2006,6 +2015,7 @@ fn command_kind(command: &Command) -> &'static str {
         Command::AddCutoutStroke { .. } => "Smart brush stroke",
         Command::MoveClips { .. } => "Move",
         Command::TrimClip { .. } => "Trim",
+        Command::SlipClip { .. } => "Slip",
         Command::SplitClips { .. } => "Split",
         Command::ReplaceClipMedia { .. } => "Replace clip's file",
         Command::SetClipEnhanced { on: true, .. } => "Enhance on",
@@ -3256,6 +3266,9 @@ impl Studio {
             scenes: None,
             cut_jobs: HashMap::new(),
             cut_cancels: HashMap::new(),
+            slip: None,
+            slip_scenes: None,
+            play_until: None,
             beat_marks: RefCell::new(HashMap::new()),
             voice_jobs: HashMap::new(),
             voice_cancel: None,

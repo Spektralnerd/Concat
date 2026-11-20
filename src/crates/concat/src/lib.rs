@@ -1114,6 +1114,24 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_scenes_fill_set(on_window!(|state, part: i32, slow: bool| {
         state.scenes_fill_set(part, slow);
     }));
+    editor.on_slip_open(on_window!(|state| {
+        state.slip_open();
+    }));
+    editor.on_slip_begin(on_window!(|state| {
+        state.slip_begin();
+    }));
+    editor.on_slip_drag(on_window!(|state, moved: f32, width: f32| {
+        state.slip_drag(moved, width);
+    }));
+    editor.on_slip_end(on_window!(|state| {
+        state.slip_end();
+    }));
+    editor.on_slip_nudge(on_window!(|state, frames: i32, seconds: f32| {
+        state.slip_nudge(frames, seconds);
+    }));
+    editor.on_slip_look(on_window!(|state, what: i32| {
+        state.slip_look(what);
+    }));
     // Fork: an edit's cuts, the lines another film is cut to.
     editor.on_cuts_detect(on_window!(|state, threshold: f32, min_seconds: f32| {
         state.cuts_detect(threshold, min_seconds);
