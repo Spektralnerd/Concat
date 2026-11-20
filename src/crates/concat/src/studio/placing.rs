@@ -3,6 +3,7 @@
 //! Placing things on the timeline.
 
 use super::*;
+use concat_project::transition_fit;
 
 impl Studio {
     // ── placing things ──
@@ -608,7 +609,15 @@ impl Studio {
     ) -> Option<String> {
         let duration = duration.max(model::ranges::MIN_TRANSITION);
         let start = match self.nearest_cut(at, duration / 2.0) {
-            Some(cut) => (cut - duration / 2.0).max(0.0),
+            // Fork: centred while both sides have footage for it, moved
+            // towards the side that has when one has not, so neither side
+            // stands frozen through it; see concat_project::transition_fit.
+            Some(cut) => {
+                let (head, tail) = self
+                    .cut_rooms(cut)
+                    .unwrap_or((f64::INFINITY, f64::INFINITY));
+                transition_fit::transition_start(cut, duration, head, tail).max(0.0)
+            }
             None => at.max(0.0),
         };
         let track_id = track_id.filter(|lane| {
@@ -624,6 +633,28 @@ impl Studio {
             transition_id: id.to_owned(),
             name: label.to_owned(),
         })
+    }
+
+    /// Fork: the footage the two clips meeting at `cut` have for a
+    /// transition across it, in timeline seconds - the incoming clip's
+    /// before its in-point, the outgoing one's after its out-point. The
+    /// first pair found where several lanes cut there.
+    fn cut_rooms(&self, cut: f64) -> Option<(f64, f64)> {
+        let frame = self.frame_seconds();
+        let incoming = self.timeline().clips.iter().find(|clip| {
+            clip.kind.is_visual()
+                && (clip.start - cut).abs() < frame / 2.0
+                && self.outgoing_of(clip).is_some()
+        })?;
+        let outgoing = self.outgoing_of(incoming)?;
+        let length = self
+            .project()
+            .media_by_id(&outgoing.media_id)
+            .and_then(|item| item.duration);
+        Some((
+            transition_fit::head_room(incoming),
+            transition_fit::tail_room(outgoing, length, frame),
+        ))
     }
 
     /// The cut nearest `at`, within `within` seconds: where a picture ends

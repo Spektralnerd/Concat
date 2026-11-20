@@ -31,6 +31,7 @@ pub mod editor;
 pub mod model;
 pub mod placement;
 pub mod reframe;
+pub mod transition_fit;
 pub mod runs;
 pub mod speed;
 #[cfg(test)]

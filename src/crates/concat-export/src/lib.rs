@@ -999,6 +999,13 @@ fn held_at(clip: &ExportClip, start: f64, length: f64, head: bool) -> ExportClip
     held.video_fade_in = 0.0;
     held.transition_shapes.clear();
     held.roles.clear();
+    // Fork: no moves of its own either. A move is a function of the clip's
+    // own time, and a stand-in's starts at the cut or the span's start, so
+    // the clip's entrance played again there: an outgoing picture that had
+    // faded in at its head vanished at the cut and faded back in under the
+    // transition (the BTTF edit's flux capacitor). A stand-in shows its
+    // clip at rest.
+    held.motion = None;
     let ends: Vec<(String, f64)> = ["scale", "offsetX", "offsetY", "rotation", "opacity"]
         .into_iter()
         .filter_map(|property| {
@@ -3878,6 +3885,38 @@ mod tests {
             before.hold,
             "the incoming clip starts at its file's first frame"
         );
+    }
+
+    /// Fork: a stand-in does not replay its clip's moves. The outgoing clip
+    /// faded in at its head; carried on past the cut, it must not fade in
+    /// a second time there, and the incoming one's stand-in plays no
+    /// entrance ahead of the clip's own.
+    #[test]
+    fn a_stand_in_replays_no_entrance() {
+        use concat_project::model::{ClipMotion, ClipMove};
+        let fade = Some(ClipMotion {
+            enter: Some(ClipMove {
+                kind: "fade".into(),
+                seconds: 0.6,
+            }),
+            exit: None,
+            cycle: None,
+        });
+        let mut clips = vec![
+            clip("video", 0, 0.0, 2.0, 0.0),
+            clip("video", 0, 2.0, 2.0, 5.0),
+            transition_clip("concat.dissolve", 1.5, 1.0, 1),
+        ];
+        for footage in &mut clips[..2] {
+            footage.media_duration = Some(10.0);
+            footage.motion = fade.clone();
+        }
+        resolve_transitions(&mut clips, FrameRate::THIRTY);
+        let stand_ins: Vec<&ExportClip> = clips.iter().filter(|c| c.stack_at.is_some()).collect();
+        assert_eq!(stand_ins.len(), 2);
+        assert!(stand_ins.iter().all(|stand_in| stand_in.motion.is_none()));
+        assert_eq!(clips[0].motion, fade, "the clips keep their own moves");
+        assert_eq!(clips[1].motion, fade);
     }
 
     /// With no cut under it, a transition clip plays its package over the
