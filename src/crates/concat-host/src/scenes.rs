@@ -6,7 +6,10 @@
 //! The list is PySceneDetect's own CSV, `<film>-Scenes.csv`, so a list
 //! made here opens wherever `scenedetect list-scenes` output does, and one
 //! made there - or by the Szenenschnitt apps, in their `<film>-szenen`
-//! folder - opens here. The pictures of every scene go into one ZIP,
+//! folder - opens here. The Szenenschnitt phone app's own scan, its
+//! measurements of every frame (`szenen.dat`), is read too, and cut with
+//! the settings it was last shown with: the same scenes, numbered the
+//! same, as the app shows and its clips are named after. The pictures of every scene go into one ZIP,
 //! `<film>-Szenen.zip`, stored rather than compressed (a JPEG does not
 //! shrink): a film of a thousand scenes is three thousand pictures, and an
 //! SD card is no place for them loose. The ZIP carries the cuts it was
@@ -136,22 +139,30 @@ pub fn fallback_dir(film: &Path) -> Option<PathBuf> {
     )
 }
 
-/// The Szenenschnitt apps' folder for the film: `<film>-szenen` beside it.
-fn szenenschnitt_dir(film: &Path) -> PathBuf {
-    film.with_file_name(format!("{}-szenen", stem(film)))
+/// The Szenenschnitt apps' folders for the film that are there:
+/// `<film>-szenen` beside it, and the phone app's own under Movies, where
+/// it goes when the film's folder takes no files.
+fn szenenschnitt_dirs(film: &Path) -> Vec<PathBuf> {
+    let name = format!("{}-szenen", stem(film));
+    let mut dirs = vec![film.with_file_name(&name)];
+    if cfg!(target_os = "android") {
+        dirs.push(Path::new("/storage/emulated/0/Movies/Szenenschnitt").join(&name));
+    }
+    dirs.retain(|dir| dir.is_dir());
+    dirs
 }
 
 /// Every place a list of the film's scenes may lie: beside it, in the
-/// Szenenschnitt folder (and its export for the PC), and in the app's own
-/// folder.
+/// Szenenschnitt folders (with the phone app's export for the PC and its
+/// own scan, `szenen.dat`), and in the app's own folder.
 pub fn list_places(film: &Path) -> Vec<PathBuf> {
     let name = format!("{}-Scenes.csv", stem(film));
-    let szenen = szenenschnitt_dir(film);
-    let mut places = vec![
-        csv_beside(film),
-        szenen.join(&name),
-        szenen.join("pc").join(&name),
-    ];
+    let mut places = vec![csv_beside(film)];
+    for szenen in szenenschnitt_dirs(film) {
+        places.push(szenen.join(&name));
+        places.push(szenen.join("pc").join(&name));
+        places.push(szenen.join(SCAN));
+    }
     if let Some(dir) = fallback_dir(film) {
         places.push(dir.join(&name));
     }
@@ -169,8 +180,14 @@ pub fn find_list(film: &Path) -> Option<(PathBuf, SceneList)> {
         .collect();
     found.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
     found.into_iter().find_map(|(_, path)| {
-        let text = std::fs::read_to_string(&path).ok()?;
-        match read_csv(&text) {
+        let read = if path.file_name().is_some_and(|name| name == SCAN) {
+            read_szenenschnitt(path.parent().unwrap_or(Path::new(".")))
+        } else {
+            std::fs::read_to_string(&path)
+                .map_err(|error| error.to_string())
+                .and_then(|text| read_csv(&text))
+        };
+        match read {
             Ok(list) => Some((path, list)),
             Err(error) => {
                 log::warn!("scenes: {} is no scene list: {error}", path.display());
@@ -178,6 +195,156 @@ pub fn find_list(film: &Path) -> Option<(PathBuf, SceneList)> {
             }
         }
     })
+}
+
+// ─── the Szenenschnitt phone app's scan ───────────────────────────────────
+
+/// The phone app's measurements of every frame.
+const SCAN: &str = "szenen.dat";
+
+/// How the phone app cuts its measurements: `detect` in its project file.
+struct Knobs {
+    adaptive: bool,
+    threshold: f64,
+    min_seconds: f64,
+    suppress: bool,
+    weights: [f64; 3],
+    adaptive_threshold: f64,
+    min_content: f64,
+    window: usize,
+}
+
+impl Knobs {
+    /// The project file's `detect`, each knob its default where missing.
+    fn of(detect: Option<&serde_json::Value>) -> Self {
+        let number = |key: &str, default: f64| {
+            detect
+                .and_then(|detect| detect.get(key))
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(default)
+        };
+        let word = |key: &str| {
+            detect
+                .and_then(|detect| detect.get(key))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        Self {
+            adaptive: word("mode") == "adaptive",
+            threshold: number("threshold", 27.0),
+            min_seconds: number("min_len", 0.6),
+            suppress: word("filter") == "suppress",
+            weights: [number("wh", 1.0), number("ws", 1.0), number("wl", 1.0)],
+            adaptive_threshold: number("adaptive_threshold", 3.0),
+            min_content: number("min_content", 15.0),
+            window: number("window", 2.0).max(1.0) as usize,
+        }
+    }
+}
+
+/// The phone app's scan in `dir` as the list it shows: every frame's
+/// measurements (`szenen.dat`: a 128-byte head with the frame rate, then
+/// 24 bytes a frame - its time, then the hue's, saturation's and value's
+/// change and its brightness as floats) cut with the settings in its
+/// project file, the way the app cuts them.
+fn read_szenenschnitt(dir: &Path) -> Result<SceneList, String> {
+    const HEAD: usize = 128;
+    const RECORD: usize = 24;
+    let data = std::fs::read(dir.join(SCAN)).map_err(|error| error.to_string())?;
+    if data.len() < HEAD || !data.starts_with(b"SZS") {
+        return Err("not a Szenenschnitt scan".to_owned());
+    }
+    let int = |at: usize| i32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]]);
+    let float = |at: usize| {
+        f64::from(f32::from_le_bytes([
+            data[at],
+            data[at + 1],
+            data[at + 2],
+            data[at + 3],
+        ]))
+    };
+    let (num, den) = (int(8), int(12).max(1));
+    let fps = if num > 0 {
+        f64::from(num) / f64::from(den)
+    } else {
+        25.0
+    };
+    let frames = (data.len() - HEAD) / RECORD;
+    if frames == 0 {
+        return Err("an empty scan".to_owned());
+    }
+    let project: Option<serde_json::Value> =
+        std::fs::read_to_string(dir.join("szenenschnitt-handy.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok());
+    let knobs = Knobs::of(project.as_ref().and_then(|project| project.get("detect")));
+    let sum: f64 = knobs.weights.iter().map(|weight| weight.abs()).sum();
+    let scores: Vec<f64> = (0..frames)
+        .map(|frame| {
+            if frame == 0 || sum <= 0.0 {
+                return 0.0;
+            }
+            let at = HEAD + frame * RECORD + 8;
+            (float(at) * knobs.weights[0]
+                + float(at + 4) * knobs.weights[1]
+                + float(at + 8) * knobs.weights[2])
+                / sum
+        })
+        .collect();
+    let min_len = concat_media::scenes::Settings {
+        threshold: knobs.threshold,
+        min_seconds: knobs.min_seconds,
+        merge: !knobs.suppress,
+    }
+    .min_frames(fps);
+    let cuts = if knobs.adaptive {
+        adaptive_cuts(&scores, &knobs, min_len)
+    } else {
+        let mut filter = concat_media::scenes::Filter::new(min_len, !knobs.suppress);
+        scores
+            .iter()
+            .enumerate()
+            .filter_map(|(frame, &score)| filter.feed(frame as u64, score >= knobs.threshold))
+            .filter(|&cut| cut > 0)
+            .collect()
+    };
+    Ok(SceneList::from_cuts(&cuts, frames as u64, fps))
+}
+
+/// PySceneDetect's adaptive detector over the scores, as the phone app
+/// runs it: a frame cuts where its score stands out from the `window`
+/// frames either side of it by `adaptive_threshold` times, and is at least
+/// `min_content` itself.
+fn adaptive_cuts(scores: &[f64], knobs: &Knobs, min_len: u64) -> Vec<u64> {
+    let window = knobs.window;
+    let need = 2 * window + 1;
+    let mut cuts = Vec::new();
+    let mut last_cut = 0usize;
+    for frame in need.saturating_sub(1)..scores.len() {
+        let target = frame - window;
+        let target_score = scores[target];
+        let around: f64 = (frame + 1 - need..=frame)
+            .filter(|&at| at != target)
+            .map(|at| scores[at])
+            .sum::<f64>()
+            / (2 * window) as f64;
+        let ratio = if around.abs() >= 0.00001 {
+            (target_score / around).min(255.0)
+        } else if target_score >= knobs.min_content {
+            255.0
+        } else {
+            0.0
+        };
+        if ratio >= knobs.adaptive_threshold
+            && target_score >= knobs.min_content
+            && (target - last_cut) as u64 >= min_len
+        {
+            last_cut = target;
+            cuts.push(target as u64);
+        }
+    }
+    cuts
 }
 
 // ─── the list ─────────────────────────────────────────────────────────────
@@ -375,22 +542,24 @@ impl Pictures {
                 return Some(pictures);
             }
         }
-        let dir = szenenschnitt_dir(film).join("bilder");
-        let mut frames: Vec<u64> = std::fs::read_dir(&dir)
-            .ok()?
-            .filter_map(|entry| {
-                let name = entry.ok()?.file_name();
-                let name = name.to_str()?;
-                name.strip_prefix('f')?.strip_suffix(".jpg")?.parse().ok()
+        szenenschnitt_dirs(film).into_iter().find_map(|szenen| {
+            let dir = szenen.join("bilder");
+            let mut frames: Vec<u64> = std::fs::read_dir(&dir)
+                .ok()?
+                .filter_map(|entry| {
+                    let name = entry.ok()?.file_name();
+                    let name = name.to_str()?;
+                    name.strip_prefix('f')?.strip_suffix(".jpg")?.parse().ok()
+                })
+                .collect();
+            if frames.is_empty() {
+                return None;
+            }
+            frames.sort_unstable();
+            Some(Pictures {
+                source: dir.clone(),
+                kind: Kind::Frames { dir, frames },
             })
-            .collect();
-        if frames.is_empty() {
-            return None;
-        }
-        frames.sort_unstable();
-        Some(Pictures {
-            source: dir.clone(),
-            kind: Kind::Frames { dir, frames },
         })
     }
 
@@ -570,6 +739,54 @@ mod tests {
         assert_eq!(list.end, 731);
         assert_eq!(list.scene(1), (96, 241));
         assert!((list.fps - 24000.0 / 1001.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_phone_apps_scan_is_cut_with_its_own_settings() {
+        let dir = std::env::temp_dir().join(format!("concat-szs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let film = dir.join("Film.mkv");
+        let szenen = dir.join("Film-szenen");
+        std::fs::create_dir_all(&szenen).unwrap();
+        // 25 fps; a hard cut at 40 and at 41 (merged), and one at 90.
+        let mut data = vec![0u8; 128];
+        data[..4].copy_from_slice(b"SZS1");
+        data[8..12].copy_from_slice(&25i32.to_le_bytes());
+        data[12..16].copy_from_slice(&1i32.to_le_bytes());
+        for frame in 0..120u64 {
+            let change: f32 = match frame {
+                40 | 41 | 90 => 60.0,
+                _ => 2.0,
+            };
+            data.extend_from_slice(&(frame as i64 * 40).to_le_bytes());
+            for _ in 0..3 {
+                data.extend_from_slice(&change.to_le_bytes());
+            }
+            data.extend_from_slice(&100f32.to_le_bytes());
+        }
+        std::fs::write(szenen.join(SCAN), &data).unwrap();
+        let (path, list) = find_list(&film).unwrap();
+        assert_eq!(path, szenen.join(SCAN));
+        assert_eq!(list.starts, vec![0, 40, 90]);
+        assert_eq!(list.end, 120);
+        assert!((list.fps - 25.0).abs() < 1e-9);
+        // Its project file says suppress, and a higher threshold.
+        std::fs::write(
+            szenen.join("szenenschnitt-handy.json"),
+            r#"{"detect": {"mode": "content", "threshold": 80, "min_len": 0.6, "filter": "suppress"}}"#,
+        )
+        .unwrap();
+        let (_, list) = find_list(&film).unwrap();
+        assert_eq!(list.starts, vec![0]);
+        // Its frames in bilder/ stand in for pictures.
+        std::fs::create_dir_all(szenen.join("bilder")).unwrap();
+        std::fs::write(szenen.join("bilder").join("f0000045.jpg"), b"pic").unwrap();
+        let three = SceneList::from_cuts(&[40, 90], 120, 25.0);
+        let pictures = Pictures::open(&film, &three).unwrap();
+        assert!(!pictures.complete());
+        assert_eq!(pictures.read(&three, 1, 2).as_deref(), Some(&b"pic"[..]));
+        assert_eq!(pictures.read(&three, 0, 2), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
