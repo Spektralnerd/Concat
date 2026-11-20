@@ -1221,5 +1221,15 @@
   "cuts.show": "Auf der Spur zeigen",
   "cuts.clear": "Schnitte entfernen",
   "cuts.found": "{0} Schnitte gefunden",
-  "cuts.failed": "Schnitte: {0}"
+  "cuts.failed": "Schnitte: {0}",
+  "scenes.rhythmNote": "Rhythmus: „{0}“ mit {1} Lücken. Ab dem Abspielkopf sind noch {2} frei, die nächste ist Lücke {3}.",
+  "scenes.rhythmFull": "Rhythmus: „{0}“ mit {1} Lücken – ab dem Abspielkopf ist keine mehr frei.",
+  "scenes.rhythmLeft": "{0} Szenen fanden keine freie Lücke mehr und bleiben ausgewählt.",
+  "scenes.noRhythm": "Auf den Spuren liegt kein Edit mit Schnitten: Finde zuerst die Schnitte des Edits, nach dem du schneidest.",
+  "scenes.fill": "{0} in die Lücken legen",
+  "scenes.fillPart": "Von längeren Szenen nehmen:",
+  "scenes.fillStart": "Anfang",
+  "scenes.fillMiddle": "Mitte",
+  "scenes.fillEnd": "Ende",
+  "scenes.fillSlow": "Kürzere Szenen verlangsamen, bis sie die Lücke füllen"
 }

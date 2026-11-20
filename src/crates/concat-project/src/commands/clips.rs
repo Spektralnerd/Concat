@@ -127,7 +127,8 @@ pub(super) fn apply(
             ripple,
         } => {
             // Each span held inside its item: what is left of it after the
-            // in-point, and never shorter than the shortest clip.
+            // in-point at its speed, and never shorter than the shortest
+            // clip.
             let mut items = Vec::with_capacity(spans.len());
             for span in &spans {
                 let media = project
@@ -135,14 +136,18 @@ pub(super) fn apply(
                     .cloned()
                     .ok_or(CommandError::MediaGone)?;
                 let length = clip_length(&media);
+                let speed = span
+                    .speed
+                    .filter(|speed| speed.is_finite() && *speed > 0.0)
+                    .map_or(1.0, |speed| speed.clamp(MIN_SPEED, MAX_SPEED));
                 let source_start = span
                     .source_start
                     .clamp(0.0, (length - MIN_CLIP_DURATION).max(0.0));
                 let duration = span
                     .duration
-                    .min(length - source_start)
+                    .min((length - source_start) / speed)
                     .max(MIN_CLIP_DURATION);
-                items.push((media, source_start, duration));
+                items.push((media, source_start, duration, speed));
             }
             if items.is_empty() {
                 return Ok(Outcome {
@@ -151,7 +156,7 @@ pub(super) fn apply(
                 });
             }
             let start = start.max(0.0);
-            let total: f64 = items.iter().map(|(_, _, duration)| duration).sum();
+            let total: f64 = items.iter().map(|(_, _, duration, _)| duration).sum();
             let timeline = project.active_mut();
             let track_id = match track_id {
                 Some(id) if timeline.track(&id).is_none() => return Err(CommandError::TrackGone),
@@ -161,7 +166,7 @@ pub(super) fn apply(
             };
             let mut at = start;
             let mut first = None;
-            for (media, source_start, duration) in &items {
+            for (media, source_start, duration, speed) in &items {
                 let place = if ripple {
                     ripple_room(timeline, &track_id, at, *duration)
                 } else {
@@ -171,6 +176,7 @@ pub(super) fn apply(
                 let mut clip = default_clip(id.clone(), track_id.clone(), media, place);
                 clip.source_start = *source_start;
                 clip.duration = *duration;
+                clip.speed = *speed;
                 timeline.clips.push(Arc::new(clip));
                 first.get_or_insert(id);
                 at = place + duration;

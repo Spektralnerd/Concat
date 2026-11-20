@@ -179,6 +179,17 @@ export global Editor {
     /// The pictures of a list made elsewhere.
     callback scenes-paint();
     callback scenes-cancel();
+    /// An edit with cuts is on the lanes, its gaps to lay scenes into
+    /// (`scenes-rhythm-note` says how many are left), and how: which part
+    /// of a longer scene, 0 its start, 1 its middle, 2 its end; and
+    /// whether a shorter one is slowed to fill its gap.
+    in-out property <bool> scenes-rhythm;
+    in-out property <string> scenes-rhythm-note;
+    in-out property <int> scenes-fill-part;
+    in-out property <bool> scenes-fill-slow: true;
+    /// The picks laid into the rhythm's empty gaps from the playhead on.
+    callback scenes-fill();
+    callback scenes-fill-set(part: int, slow: bool);
 
     // library catalogue pages
     /// The looks the Text page offers, published once.

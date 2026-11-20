@@ -20,6 +20,7 @@ use std::time::Instant;
 use concat_host::scenes::{self as files, Manifest, PictureWriter, Pictures, SceneList};
 use concat_media::scenes::{self as detector, Event, Settings};
 use concat_project::commands::ClipSpan;
+use concat_project::rhythm::{self, Part, Rhythm};
 
 use super::*;
 
@@ -79,6 +80,15 @@ fn knobs() -> (f32, f32) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// How scenes are laid into a rhythm's gaps, while the app runs: which
+/// part of a scene longer than its gap (0 its start, 1 its middle, 2 its
+/// end), and whether one shorter than its gap is slowed to fill it.
+static FILL: Mutex<(i32, bool)> = Mutex::new((0, true));
+
+fn fill_knobs() -> (i32, bool) {
+    *FILL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// The page each film's sheet was last on, while the app runs: the sheet
 /// opens again where it was left.
 static PAGES: Mutex<Option<HashMap<PathBuf, usize>>> = Mutex::new(None);
@@ -121,6 +131,11 @@ pub(super) struct ScenesReadout {
     pub min_seconds: f32,
     /// The film's height over its width.
     pub aspect: f32,
+    /// An edit with cuts is on the lanes to lay scenes into, and how.
+    pub rhythm: bool,
+    pub rhythm_note: String,
+    pub fill_part: i32,
+    pub fill_slow: bool,
 }
 
 /// A length in seconds with one decimal, the decimal mark the
@@ -438,6 +453,7 @@ impl Studio {
                     media_id: media_id.clone(),
                     source_start: start as f64 / fps,
                     duration: (end - start) as f64 / fps,
+                    speed: None,
                 }
             })
             .collect();
@@ -454,6 +470,100 @@ impl Studio {
         crate::panes::media_bin::follow_landed(self, &before);
         log::info!("scenes: {count} scenes laid down");
         true
+    }
+
+    /// The edit the timeline is cut to at the playhead, and its gaps
+    /// still empty (see [`rhythm::rhythm`]).
+    fn rhythm(&self) -> Option<Rhythm> {
+        // Half a frame of the timeline is one moment.
+        let tolerance = 0.5 / f64::from(self.frame_rate().max(1.0));
+        rhythm::rhythm(self.project(), f64::from(self.playhead.max(0.0)), tolerance)
+    }
+
+    /// How the next fill lays scenes: which part of a longer scene, and
+    /// whether a shorter one is slowed.
+    pub fn scenes_fill_set(&mut self, part: i32, slow: bool) {
+        *FILL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = (part.clamp(0, 2), slow);
+    }
+
+    /// Lays the picked scenes into the rhythm's empty gaps from the
+    /// playhead on, one a gap in the order they were picked, over the
+    /// edit: each cut to its gap - its start, middle or end, as set - and
+    /// one shorter than its gap slowed to fill it, if asked, or left
+    /// short. Slowed no further than the engine goes, a scene stays itself
+    /// and leaves the rest of its gap empty rather than run into the next
+    /// one. One step to undo; the scenes there was no gap left for stay
+    /// picked.
+    pub fn scenes_fill(&mut self) {
+        let Some((media_id, list, fps, picked)) = self.scenes.as_ref().and_then(|view| {
+            Some((
+                view.media_id.clone(),
+                view.list.clone()?,
+                view.fps,
+                view.picked.clone(),
+            ))
+        }) else {
+            return;
+        };
+        if picked.is_empty() || self.project().media_by_id(&media_id).is_none() {
+            return;
+        }
+        let Some(rhythm) = self.rhythm() else {
+            self.notify(&t("scenes.noRhythm"), true);
+            return;
+        };
+        let count = picked.len().min(rhythm.free.len());
+        let left = picked[count..].to_vec();
+        if count == 0 {
+            self.notify(
+                &tf("scenes.rhythmFull", &[&rhythm.name, &rhythm.gaps]),
+                true,
+            );
+            return;
+        }
+        let scenes: Vec<(f64, f64)> = picked[..count]
+            .iter()
+            .map(|&scene| {
+                let (start, end) = list.scene(scene);
+                (start as f64 / fps, (end - start) as f64 / fps)
+            })
+            .collect();
+        let slots = &rhythm.free[..count];
+        let (part, slow) = fill_knobs();
+        // One gesture for a new lane and the clips: one step to undo, and
+        // never folded into a fill before it.
+        let gesture = format!("rhythm fill {}", self.revision);
+        let before = crate::panes::media_bin::clip_ids(self);
+        self.close_source();
+        let fresh = if slots.iter().any(|slot| slot.lane.is_none()) {
+            match self.apply_in(Some(&gesture), Command::AddTrack { bottom: false }) {
+                Some(lane) => Some(lane),
+                None => return,
+            }
+        } else {
+            None
+        };
+        let commands = rhythm::fill(
+            &media_id,
+            &scenes,
+            slots,
+            Part::from_index(part),
+            slow,
+            fresh.as_deref(),
+        );
+        self.apply_in(Some(&gesture), Command::Batch { commands });
+        crate::panes::media_bin::follow_landed(self, &before);
+        log::info!(
+            "scenes: {count} scenes laid into the gaps of {} from gap {}",
+            rhythm.name,
+            slots[0].index + 1
+        );
+        if let Some(view) = self.scenes.as_mut() {
+            view.picked = left.clone();
+        }
+        if !left.is_empty() {
+            self.notify(&tf("scenes.rhythmLeft", &[&left.len()]), true);
+        }
     }
 
     /// Reads the film through for its scenes, with `threshold` and the
@@ -611,6 +721,10 @@ impl Studio {
             threshold,
             min_seconds,
             aspect: 0.5625,
+            rhythm: false,
+            rhythm_note: String::new(),
+            fill_part: fill_knobs().0,
+            fill_slow: fill_knobs().1,
         };
         let Some(view) = self.scenes.as_ref() else {
             return readout;
@@ -673,6 +787,21 @@ impl Studio {
             return readout;
         };
         readout.listed = true;
+        if let Some(rhythm) = self.rhythm() {
+            readout.rhythm = true;
+            readout.rhythm_note = match rhythm.free.first() {
+                Some(next) => tf(
+                    "scenes.rhythmNote",
+                    &[
+                        &rhythm.name,
+                        &rhythm.gaps,
+                        &rhythm.free.len(),
+                        &(next.index + 1),
+                    ],
+                ),
+                None => tf("scenes.rhythmFull", &[&rhythm.name, &rhythm.gaps]),
+            };
+        }
         readout.pictured = view
             .pictures
             .as_ref()

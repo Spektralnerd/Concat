@@ -1992,6 +1992,10 @@ impl Studio {
         editor.set_scenes_min_seconds(scenes.min_seconds);
         editor.set_scenes_aspect(scenes.aspect);
         editor.set_scenes_playing(scenes.playing);
+        editor.set_scenes_rhythm(scenes.rhythm);
+        editor.set_scenes_rhythm_note(scenes.rhythm_note.into());
+        editor.set_scenes_fill_part(scenes.fill_part);
+        editor.set_scenes_fill_slow(scenes.fill_slow);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);

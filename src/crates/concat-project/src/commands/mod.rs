@@ -94,8 +94,13 @@ pub struct ClipSpan {
     pub media_id: String,
     /// Where in the item the clip begins, in seconds, floored at 0.
     pub source_start: f64,
-    /// How long the clip is, in seconds; held to what the item has left.
+    /// How long the clip is on the timeline, in seconds; held to what the
+    /// item has left.
     pub duration: f64,
+    /// The clip's speed, or none for its own: a scene slowed to fill the
+    /// gap of a rhythm it is laid in. Held to the speeds a clip can have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
 }
 
 /// A partial update to one clip. Every field optional; `transition_in` and
@@ -1273,7 +1278,7 @@ impl Command {
                 bad([*start])
                     || spans
                         .iter()
-                        .any(|span| bad([span.source_start, span.duration]))
+                        .any(|span| bad([span.source_start, span.duration]) || bad(span.speed))
             }
             Command::AddShapeClip {
                 start,

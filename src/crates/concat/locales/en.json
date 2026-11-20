@@ -1240,5 +1240,15 @@
   "cuts.show": "Show on the lanes",
   "cuts.clear": "Remove cuts",
   "cuts.found": "{0} cuts found",
-  "cuts.failed": "Cuts: {0}"
+  "cuts.failed": "Cuts: {0}",
+  "scenes.rhythmNote": "Rhythm: “{0}” with {1} gaps. {2} still empty from the playhead on, the next is gap {3}.",
+  "scenes.rhythmFull": "Rhythm: “{0}” with {1} gaps - none left empty from the playhead on.",
+  "scenes.rhythmLeft": "{0} scenes found no empty gap and stay picked.",
+  "scenes.noRhythm": "There is no edit with cuts on the lanes: find the cuts of the edit you are cutting to first.",
+  "scenes.fill": "Lay {0} into the gaps",
+  "scenes.fillPart": "Of a longer scene, use its",
+  "scenes.fillStart": "Start",
+  "scenes.fillMiddle": "Middle",
+  "scenes.fillEnd": "End",
+  "scenes.fillSlow": "Slow shorter scenes to fill their gap"
 }

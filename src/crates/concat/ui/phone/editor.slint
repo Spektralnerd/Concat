@@ -253,6 +253,33 @@ component PhoneSceneGrid inherits Rectangle {
     }
 }
 
+/// Fork: one of a row of choices, lit while it is the one chosen.
+component ChoicePill inherits Rectangle {
+    in property <string> label;
+    in property <bool> current;
+
+    callback clicked();
+
+    height: 40px;
+    horizontal-stretch: 1;
+    border-radius: 20px;
+    background: root.current ? Theme.accent
+        : touch.pressed ? Theme.field-active : Theme.field;
+
+    Text {
+        text: root.label;
+        color: root.current ? Theme.on-accent : Theme.fg;
+        font-size: Theme.fs;
+        font-weight: Theme.weight-title;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 /// Fork: a page's way back and on through a film's scenes - ten pages at a
 /// time and one - with where it is between.
 component ScenePages inherits HorizontalLayout {
@@ -681,6 +708,8 @@ export component PhoneEditor inherits Rectangle {
         : root.transport-y;
     /// The Add bar under the bin while something is picked.
     property <length> add-bar-h: 68px;
+    /// Fork: the scenes' Add bar, a row taller with a rhythm to fill.
+    property <length> scenes-bar-h: Editor.scenes-rhythm ? 120px : root.add-bar-h;
 
     // ── the top bar ──────────────────────────────────────────────────
     Rectangle {
@@ -1517,6 +1546,35 @@ export component PhoneEditor inherits Rectangle {
                 }
             }
 
+            // An edit with cuts on the lanes: its gaps to lay the picks
+            // into, and how a scene is fitted to its gap.
+            if Editor.scenes-listed && Editor.scenes-rhythm: VerticalLayout {
+                spacing: 8px;
+
+                SheetNote {
+                    text: Editor.scenes-rhythm-note;
+                    color: Theme.fg;
+                }
+                Text {
+                    text: I18n.t("scenes.fillPart");
+                    color: Theme.fg-dim;
+                    font-size: Theme.fs;
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    for label[index] in [I18n.t("scenes.fillStart"), I18n.t("scenes.fillMiddle"), I18n.t("scenes.fillEnd")]: ChoicePill {
+                        label: label;
+                        current: Editor.scenes-fill-part == index;
+                        clicked => { Editor.scenes-fill-set(index, Editor.scenes-fill-slow); }
+                    }
+                }
+                SwitchRow {
+                    label: I18n.t("scenes.fillSlow");
+                    checked: Editor.scenes-fill-slow;
+                    toggled(on) => { Editor.scenes-fill-set(Editor.scenes-fill-part, on); }
+                }
+            }
+
             if Editor.scenes-listed && Editor.scenes-pages > 1: ScenePages { }
             if Editor.scenes-listed: PhoneSceneGrid {
                 cards: Editor.scenes-cards;
@@ -1589,7 +1647,7 @@ export component PhoneEditor inherits Rectangle {
 
             // Room under the last row for the Add bar over it.
             if Editor.scenes-picked-count > 0: Rectangle {
-                height: root.add-bar-h - 12px;
+                height: root.scenes-bar-h - 12px;
             }
         }
 
@@ -2231,9 +2289,9 @@ export component PhoneEditor inherits Rectangle {
     // same page.
     if root.sheet == "scenes" && Editor.scenes-picked-count > 0: Rectangle {
         x: 0;
-        y: root.height - root.add-bar-h + sheet.drag;
+        y: root.height - root.scenes-bar-h + sheet.drag;
         width: root.width;
-        height: root.add-bar-h;
+        height: root.scenes-bar-h;
         background: Theme.panel;
 
         Rectangle {
@@ -2246,25 +2304,37 @@ export component PhoneEditor inherits Rectangle {
 
         TouchArea { }
 
-        HorizontalLayout {
+        VerticalLayout {
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 12px;
             padding-bottom: 12px;
             spacing: 8px;
 
-            SheetButton {
-                horizontal-stretch: 1;
-                glyph: Glyph.plus;
+            // With a rhythm on the lanes, laying the picks into its gaps
+            // comes first.
+            if Editor.scenes-rhythm: SheetButton {
+                glyph: Glyph.razor;
                 primary: true;
-                label: I18n.t1("scenes.add", Editor.scenes-picked-count);
-                clicked => { Editor.scenes-add(root.media-at-end); }
+                label: I18n.t1("scenes.fill", Editor.scenes-picked-count);
+                clicked => { Editor.scenes-fill(); }
             }
-            SheetButton {
-                horizontal-stretch: 0;
-                glyph: Glyph.close;
-                label: I18n.t("scenes.unpick");
-                clicked => { Editor.scenes-clear-picks(); }
+            HorizontalLayout {
+                spacing: 8px;
+
+                SheetButton {
+                    horizontal-stretch: 1;
+                    glyph: Glyph.plus;
+                    primary: !Editor.scenes-rhythm;
+                    label: I18n.t1("scenes.add", Editor.scenes-picked-count);
+                    clicked => { Editor.scenes-add(root.media-at-end); }
+                }
+                SheetButton {
+                    horizontal-stretch: 0;
+                    glyph: Glyph.close;
+                    label: I18n.t("scenes.unpick");
+                    clicked => { Editor.scenes-clear-picks(); }
+                }
             }
         }
     }

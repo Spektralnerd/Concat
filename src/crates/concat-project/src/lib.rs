@@ -31,6 +31,7 @@ pub mod editor;
 pub mod model;
 pub mod placement;
 pub mod reframe;
+pub mod rhythm;
 pub mod runs;
 pub mod speed;
 #[cfg(test)]
@@ -4977,6 +4978,7 @@ mod tests {
             media_id: media_id.clone(),
             source_start,
             duration,
+            speed: None,
         };
         // Inserted at 4 s into the ten-second clip, with the lane making
         // room: the clip's tail moves along by the two spans.
@@ -5003,6 +5005,44 @@ mod tests {
         assert_eq!(b.track_id, track_id);
         assert!(editor.undo(), "undoes");
         assert_eq!(editor.project().active().clips.len(), 1, "one undo step");
+
+        // Slowed to a third to fill three seconds with one of the item.
+        let slow = editor
+            .apply(Command::AddClipSpans {
+                spans: vec![crate::commands::ClipSpan {
+                    speed: Some(1.0 / 3.0),
+                    ..span(4.0, 3.0)
+                }],
+                track_id: Some(track_id.clone()),
+                start: 20.0,
+                ripple: false,
+            })
+            .expect("adds")
+            .created_id
+            .expect("id");
+        let clip = editor.project().active().clip(&slow).expect("exists");
+        assert_eq!(
+            (clip.start, clip.source_start, clip.duration),
+            (20.0, 4.0, 3.0)
+        );
+        assert!((clip.speed - 1.0 / 3.0).abs() < 1e-9);
+        // At a third, the six seconds left after 4 s fill no more than
+        // eighteen.
+        let long = editor
+            .apply(Command::AddClipSpans {
+                spans: vec![crate::commands::ClipSpan {
+                    speed: Some(1.0 / 3.0),
+                    ..span(4.0, 40.0)
+                }],
+                track_id: Some(track_id),
+                start: 30.0,
+                ripple: false,
+            })
+            .expect("adds")
+            .created_id
+            .expect("id");
+        let clip = editor.project().active().clip(&long).expect("exists");
+        assert!((clip.duration - 18.0).abs() < 1e-9, "{}", clip.duration);
     }
 
     #[test]
