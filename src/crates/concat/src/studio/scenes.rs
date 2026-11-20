@@ -136,6 +136,8 @@ pub(super) struct ScenesReadout {
     pub rhythm_note: String,
     pub fill_part: i32,
     pub fill_slow: bool,
+    /// Scenes are laid down with their own sound.
+    pub sound: bool,
 }
 
 /// A length in seconds with one decimal, the decimal mark the
@@ -454,6 +456,7 @@ impl Studio {
                     source_start: start as f64 / fps,
                     duration: (end - start) as f64 / fps,
                     speed: None,
+                    volume: self.prefs.scenes_muted.then_some(0.0),
                 }
             })
             .collect();
@@ -478,6 +481,15 @@ impl Studio {
         // Half a frame of the timeline is one moment.
         let tolerance = 0.5 / f64::from(self.frame_rate().max(1.0));
         rhythm::rhythm(self.project(), f64::from(self.playhead.max(0.0)), tolerance)
+    }
+
+    /// Whether scenes are laid down with their own sound, from now on and
+    /// in the next run too.
+    pub fn scenes_sound_set(&mut self, on: bool) {
+        if self.prefs.scenes_muted == on {
+            self.prefs.scenes_muted = !on;
+            self.prefs.save(&self.host.dirs);
+        }
     }
 
     /// How the next fill lays scenes: which part of a longer scene, and
@@ -550,6 +562,7 @@ impl Studio {
             Part::from_index(part),
             slow,
             fresh.as_deref(),
+            self.prefs.scenes_muted.then_some(0.0),
         );
         self.apply_in(Some(&gesture), Command::Batch { commands });
         crate::panes::media_bin::follow_landed(self, &before);
@@ -725,6 +738,7 @@ impl Studio {
             rhythm_note: String::new(),
             fill_part: fill_knobs().0,
             fill_slow: fill_knobs().1,
+            sound: !self.prefs.scenes_muted,
         };
         let Some(view) = self.scenes.as_ref() else {
             return readout;

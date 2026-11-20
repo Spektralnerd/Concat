@@ -222,8 +222,9 @@ pub fn fit(first: f64, length: f64, room: f64, part: Part, slow: bool) -> Fit {
 
 /// The commands that lay `scenes` of `media_id` - each where it starts in
 /// the film and how long it runs, in seconds - into `slots`, one a slot in
-/// order, each [`fit`] to its room; `fresh` is the lane for a slot that
-/// has none. Scenes past the last slot are left out. Applied in one
+/// order, each [`fit`] to its room, at `volume` when one is given (0 for
+/// none of their own sound); `fresh` is the lane for a slot that has none.
+/// Scenes past the last slot are left out. Applied in one
 /// [`Command::Batch`], they are one step to undo.
 pub fn fill(
     media_id: &str,
@@ -232,6 +233,7 @@ pub fn fill(
     part: Part,
     slow: bool,
     fresh: Option<&str>,
+    volume: Option<f64>,
 ) -> Vec<Command> {
     scenes
         .iter()
@@ -245,6 +247,7 @@ pub fn fill(
                     source_start: fit.source_start,
                     duration: fit.duration,
                     speed: fit.speed,
+                    volume,
                 }],
                 track_id: Some(lane.to_owned()),
                 start: slot.start,
@@ -410,6 +413,7 @@ mod tests {
                     source_start: 30.0,
                     duration: 2.5,
                     speed: None,
+                    volume: None,
                 }],
                 track_id: Some(lane),
                 start: 2.0,
@@ -444,6 +448,7 @@ mod tests {
                     source_start: 10.0,
                     duration: 2.01,
                     speed: None,
+                    volume: None,
                 }],
                 track_id: Some(lane.clone()),
                 start: 0.0,
@@ -507,7 +512,7 @@ mod tests {
         let found = rhythm(editor.project(), 0.0, TOLERANCE).expect("a rhythm");
         // Three scenes for four gaps: a long one, a short one, an exact one.
         let scenes = [(20.0, 5.0), (40.0, 0.5), (60.0, 2.5)];
-        let commands = fill(&film, &scenes, &found.free, Part::End, true, None);
+        let commands = fill(&film, &scenes, &found.free, Part::End, true, None, None);
         assert_eq!(commands.len(), 3);
         editor
             .apply_within(Some("fill"), Command::Batch { commands })
@@ -561,7 +566,18 @@ mod tests {
         let found = rhythm(editor.project(), 0.0, TOLERANCE).expect("a rhythm");
         assert_eq!(found.free.len(), 2);
         assert!(found.free.iter().all(|slot| slot.lane.is_none()));
-        assert!(fill(&edit, &[(0.0, 1.0)], &found.free, Part::Start, true, None).is_empty());
+        assert!(
+            fill(
+                &edit,
+                &[(0.0, 1.0)],
+                &found.free,
+                Part::Start,
+                true,
+                None,
+                None
+            )
+            .is_empty()
+        );
         let fresh = editor
             .apply_within(Some("fill"), Command::AddTrack { bottom: false })
             .expect("adds")
@@ -574,18 +590,24 @@ mod tests {
             Part::Start,
             true,
             Some(&fresh),
+            Some(0.0),
         );
         editor
             .apply_within(Some("fill"), Command::Batch { commands })
             .expect("fills");
-        let on_fresh = editor
+        let on_fresh: Vec<_> = editor
             .project()
             .active()
             .clips
             .iter()
             .filter(|clip| clip.track_id == fresh)
-            .count();
-        assert_eq!(on_fresh, 2);
+            .cloned()
+            .collect();
+        assert_eq!(on_fresh.len(), 2);
+        assert!(
+            on_fresh.iter().all(|clip| clip.volume == 0.0),
+            "laid without their sound"
+        );
         let lanes = editor.project().active().tracks.len();
         assert!(editor.undo());
         assert_eq!(

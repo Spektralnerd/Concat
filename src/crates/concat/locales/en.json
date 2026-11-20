@@ -1262,5 +1262,6 @@
   "slip.first": "Start",
   "slip.play": "Play",
   "slip.last": "End",
-  "slip.copy": "The clip shows a copy of only its own stretch (smooth slow motion or Enhance). Turn that off to move through the whole film."
+  "slip.copy": "The clip shows a copy of only its own stretch (smooth slow motion or Enhance). Turn that off to move through the whole film.",
+  "scenes.sound": "Lay scenes down with their own sound"
 }

@@ -147,7 +147,7 @@ pub(super) fn apply(
                     .duration
                     .min((length - source_start) / speed)
                     .max(MIN_CLIP_DURATION);
-                items.push((media, source_start, duration, speed));
+                items.push((media, source_start, duration, speed, span.volume));
             }
             if items.is_empty() {
                 return Ok(Outcome {
@@ -156,7 +156,7 @@ pub(super) fn apply(
                 });
             }
             let start = start.max(0.0);
-            let total: f64 = items.iter().map(|(_, _, duration, _)| duration).sum();
+            let total: f64 = items.iter().map(|(_, _, duration, _, _)| duration).sum();
             let timeline = project.active_mut();
             let track_id = match track_id {
                 Some(id) if timeline.track(&id).is_none() => return Err(CommandError::TrackGone),
@@ -166,7 +166,7 @@ pub(super) fn apply(
             };
             let mut at = start;
             let mut first = None;
-            for (media, source_start, duration, speed) in &items {
+            for (media, source_start, duration, speed, volume) in &items {
                 let place = if ripple {
                     ripple_room(timeline, &track_id, at, *duration)
                 } else {
@@ -177,6 +177,9 @@ pub(super) fn apply(
                 clip.source_start = *source_start;
                 clip.duration = *duration;
                 clip.speed = *speed;
+                if let Some(volume) = volume {
+                    clip.volume = volume.max(0.0);
+                }
                 timeline.clips.push(Arc::new(clip));
                 first.get_or_insert(id);
                 at = place + duration;

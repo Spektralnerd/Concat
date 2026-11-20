@@ -1243,5 +1243,6 @@
   "slip.first": "Anfang",
   "slip.play": "Abspielen",
   "slip.last": "Ende",
-  "slip.copy": "Der Clip zeigt eine Kopie nur seines Ausschnitts (flüssige Zeitlupe oder Verbessern). Schalte das aus, um durch den ganzen Film zu wandern."
+  "slip.copy": "Der Clip zeigt eine Kopie nur seines Ausschnitts (flüssige Zeitlupe oder Verbessern). Schalte das aus, um durch den ganzen Film zu wandern.",
+  "scenes.sound": "Szenen mit Originalton einfügen"
 }

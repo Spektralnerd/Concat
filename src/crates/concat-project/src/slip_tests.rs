@@ -53,6 +53,7 @@ fn add_span(
                 source_start,
                 duration,
                 speed,
+                volume: None,
             }],
             track_id: Some(track_id),
             start,

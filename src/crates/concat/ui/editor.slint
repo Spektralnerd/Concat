@@ -190,6 +190,10 @@ export global Editor {
     /// The picks laid into the rhythm's empty gaps from the playhead on.
     callback scenes-fill();
     callback scenes-fill-set(part: int, slow: bool);
+    /// Scenes are laid down with their own sound; off lays them at no
+    /// volume, for an edit cut to music. Kept from one run to the next.
+    in-out property <bool> scenes-sound: true;
+    callback scenes-sound-set(on: bool);
     /// Fork: the Ausschnitt sheet - another stretch of the selected clip's
     /// footage in the same place. Opened; a finger down on the strip,
     /// moved `moved` points along a strip `width` points wide, and up; a

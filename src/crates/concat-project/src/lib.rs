@@ -4981,6 +4981,7 @@ mod tests {
             source_start,
             duration,
             speed: None,
+            volume: None,
         };
         // Inserted at 4 s into the ten-second clip, with the lane making
         // room: the clip's tail moves along by the two spans.

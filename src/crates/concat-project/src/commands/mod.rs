@@ -101,6 +101,10 @@ pub struct ClipSpan {
     /// gap of a rhythm it is laid in. Held to the speeds a clip can have.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed: Option<f64>,
+    /// The clip's volume, or none for the full one it starts with: 0 lays
+    /// a scene down without its own sound, for an edit cut to music.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f64>,
 }
 
 /// A partial update to one clip. Every field optional; `transition_in` and
@@ -1290,9 +1294,11 @@ impl Command {
             | Command::AddClipsInSequence { start, .. } => bad([*start]),
             Command::AddClipSpans { spans, start, .. } => {
                 bad([*start])
-                    || spans
-                        .iter()
-                        .any(|span| bad([span.source_start, span.duration]) || bad(span.speed))
+                    || spans.iter().any(|span| {
+                        bad([span.source_start, span.duration])
+                            || bad(span.speed)
+                            || bad(span.volume)
+                    })
             }
             Command::AddShapeClip {
                 start,

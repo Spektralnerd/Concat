@@ -1114,6 +1114,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_scenes_fill_set(on_window!(|state, part: i32, slow: bool| {
         state.scenes_fill_set(part, slow);
     }));
+    editor.on_scenes_sound_set(on_window!(|state, on: bool| {
+        state.scenes_sound_set(on);
+    }));
     editor.on_slip_open(on_window!(|state| {
         state.slip_open();
     }));

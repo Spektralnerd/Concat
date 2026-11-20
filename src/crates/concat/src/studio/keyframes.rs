@@ -2004,6 +2004,7 @@ impl Studio {
         editor.set_scenes_rhythm_note(scenes.rhythm_note.into());
         editor.set_scenes_fill_part(scenes.fill_part);
         editor.set_scenes_fill_slow(scenes.fill_slow);
+        editor.set_scenes_sound(scenes.sound);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);

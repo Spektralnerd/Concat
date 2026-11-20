@@ -1622,6 +1622,14 @@ export component PhoneEditor inherits Rectangle {
                 }
             }
 
+            // Whether the picks keep the sound they were shot with: off,
+            // they go down silent, for an edit cut to music.
+            if Editor.scenes-listed: SwitchRow {
+                label: I18n.t("scenes.sound");
+                checked: Editor.scenes-sound;
+                toggled(on) => { Editor.scenes-sound-set(on); }
+            }
+
             // An edit with cuts on the lanes: its gaps to lay the picks
             // into, and how a scene is fitted to its gap.
             if Editor.scenes-listed && Editor.scenes-rhythm: VerticalLayout {

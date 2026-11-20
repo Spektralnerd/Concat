@@ -99,6 +99,11 @@ pub struct Preferences {
     /// the copy is the one a project can count on keeping, and Android
     /// asks for the right to read every file before it lets the app in.
     pub files_in_place: bool,
+    /// Fork: scenes from the Scenes sheet are laid down without their own
+    /// sound - at no volume, to be turned up clip by clip - for an edit
+    /// cut to music. Off by default: a clip keeps the sound it was shot
+    /// with, as every other way of adding one does.
+    pub scenes_muted: bool,
     /// Drawing in software: the window and the compositor on the
     /// platform's software rasteriser (WARP, lavapipe) instead of the GPU,
     /// as the person chose in Settings > General or with `concat
