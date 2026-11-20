@@ -19,6 +19,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 use concat_core::frame::Signal;
 use concat_media::decode::{DecodeOptions, Decoder, FrameSource};
@@ -27,6 +28,10 @@ use concat_media::{ColorRange, EncodeOptions, Encoder, FrameSink, Priority, Rate
 /// A file with more pixels than this gets a proxy: anything larger than
 /// full HD.
 const PIXELS_WITHOUT_PROXY: u64 = 1920 * 1080;
+/// Fork: with the fast preview on, the line is lower: every file with
+/// more pixels than a quarter of full HD gets one, full HD included -
+/// a phone scrubbing through a long film decodes the copy far quicker.
+const PIXELS_WITHOUT_FAST_PROXY: u64 = 960 * 540;
 /// The proxy's long side is the original's divided by this, and never
 /// shorter than [`SHORTEST_LONG_SIDE`].
 const DIVISOR: u32 = 4;
@@ -35,6 +40,12 @@ const SHORTEST_LONG_SIDE: u32 = 960;
 /// Whether a `width` by `height` file is worth a proxy.
 pub fn wanted(width: u32, height: u32) -> bool {
     u64::from(width) * u64::from(height) > PIXELS_WITHOUT_PROXY
+}
+
+/// Fork: whether a `width` by `height` file is worth a proxy for the fast
+/// preview, which wants one for full HD too.
+pub fn wanted_fast(width: u32, height: u32) -> bool {
+    u64::from(width) * u64::from(height) > PIXELS_WITHOUT_FAST_PROXY
 }
 
 /// The proxy's size for a `width` by `height` original: the long side a
@@ -96,7 +107,8 @@ pub fn existing(project: &Path, media: &str, range: Option<ColorRange>) -> Optio
 }
 
 /// Sees to it that `media` - `width` by `height`, read as `range` - has
-/// a proxy when it is worth one: an existing copy is adopted into the
+/// a proxy when it is worth one (with `fast`, the fast preview's lower
+/// line: see [`wanted_fast`]): an existing copy is adopted into the
 /// reader pool at once; otherwise one is queued to be written on the
 /// proxy lane and adopted when done. Asking again while it is being
 /// written is free. Returns whether the file has, or will have, a proxy.
@@ -107,8 +119,14 @@ pub fn ensure(
     height: u32,
     range: Option<ColorRange>,
     hdr: bool,
+    fast: bool,
 ) -> bool {
-    if !wanted(width, height) {
+    let worth = if fast {
+        wanted_fast(width, height)
+    } else {
+        wanted(width, height)
+    };
+    if !worth {
         return false;
     }
     let Some(target) = path_for(project, media, range, hdr) else {
@@ -155,6 +173,67 @@ pub fn ensure(
 fn writing() -> &'static Mutex<HashSet<PathBuf>> {
     static WRITING: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
     WRITING.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Fork: the proxy being written this moment: its file, how many of its
+/// frames are written and how many there are (0 when its length is not
+/// known), and since when.
+struct Writing {
+    source: String,
+    done: u64,
+    total: u64,
+    since: Instant,
+}
+
+fn current() -> &'static Mutex<Option<Writing>> {
+    static CURRENT: OnceLock<Mutex<Option<Writing>>> = OnceLock::new();
+    CURRENT.get_or_init(|| Mutex::new(None))
+}
+
+/// Fork: how the proxies are coming along, for a line on the screen.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Progress {
+    /// The file whose copy is being written, if one is under way yet.
+    pub source: Option<String>,
+    /// How far along it is, `0..=1`; 0 when its length is not known.
+    pub fraction: f32,
+    /// Seconds it has taken so far.
+    pub elapsed: f32,
+    /// Copies waiting their turn after it.
+    pub waiting: usize,
+}
+
+/// Fork: the proxies being written and waiting, or none when there are
+/// none.
+pub fn progress() -> Option<Progress> {
+    let queued = writing()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .len();
+    if queued == 0 {
+        return None;
+    }
+    let current = current()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Some(match current.as_ref() {
+        Some(writing) => Progress {
+            source: Some(writing.source.clone()),
+            fraction: if writing.total > 0 {
+                (writing.done as f64 / writing.total as f64).min(1.0) as f32
+            } else {
+                0.0
+            },
+            elapsed: writing.since.elapsed().as_secs_f32(),
+            waiting: queued.saturating_sub(1),
+        },
+        None => Progress {
+            source: None,
+            fraction: 0.0,
+            elapsed: 0.0,
+            waiting: queued,
+        },
+    })
 }
 
 /// Removes the proxies under `project` that `keep` does not name: the
@@ -207,6 +286,29 @@ pub fn write(
         .map(|video| (video.frame_rate, video.signal))
         .ok_or_else(|| "no video stream".to_owned())?;
     let hdr = matches!(signal, Signal::Hlg | Signal::Pq);
+    // Fork: the phone stays awake while a copy is written - a whole film's
+    // takes a while - and the screen can say how far it has got.
+    let _awake = crate::awake::Awake::hold();
+    let total = info
+        .duration
+        .map_or(0, |duration| rate.frames_in(duration).max(0) as u64);
+    *current()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Writing {
+        source: source.to_owned(),
+        done: 0,
+        total,
+        since: Instant::now(),
+    });
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            *current()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        }
+    }
+    let _done = Done;
     if let Some(folder) = target.parent() {
         std::fs::create_dir_all(folder)
             .map_err(|error| format!("{}: {error}", folder.display()))?;
@@ -214,10 +316,13 @@ pub fn write(
     // Written beside the target under a name the muxer still knows the
     // format of, and moved into place only when whole.
     let partial = target.with_extension("part.mp4");
+    // A phone has cores to spare for it: four of its eight decode, which
+    // is what the copy waits on, and the chip encodes.
+    let threads = if cfg!(target_os = "android") { 4 } else { 2 };
     let options = DecodeOptions::default()
         .scaled_to(width, height)
         .in_software()
-        .threaded(2)
+        .threaded(threads)
         .in_range(range)
         .deep(hdr);
     let mut decoder = Decoder::open(source, &options).map_err(|error| error.to_string())?;
@@ -248,10 +353,20 @@ pub fn write(
     }
     .map_err(|error| error.to_string())?;
     let result = (|| {
+        let mut done: u64 = 0;
         while let Some(frame) = decoder.next_frame().map_err(|error| error.to_string())? {
             encoder
                 .write_frame(&frame)
                 .map_err(|error| error.to_string())?;
+            done += 1;
+            if done.is_multiple_of(24)
+                && let Some(writing) = current()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .as_mut()
+            {
+                writing.done = done;
+            }
         }
         encoder.finish().map_err(|error| error.to_string())
     })();
@@ -272,6 +387,68 @@ pub fn write(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With the fast preview, a full HD file gets its copy too - half its
+    /// size - and the copy's progress shows while it is written and is
+    /// gone once it is done.
+    #[test]
+    fn a_full_hd_file_gets_a_fast_preview_copy_and_its_progress() {
+        use concat_core::frame::Frame;
+        use concat_core::time::FrameRate;
+        let dir = std::env::temp_dir().join(format!("concat-proxy-fast-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let media = dir.join("film.mp4");
+        {
+            let mut encoder = Encoder::create(
+                &media,
+                1920,
+                1080,
+                FrameRate::from_int(24),
+                &EncodeOptions {
+                    codec: VideoCodec::Mpeg4,
+                    hardware: false,
+                    ..EncodeOptions::default()
+                },
+            )
+            .expect("encodes");
+            for index in 0..48u8 {
+                let mut frame = Frame::black(1920, 1080);
+                frame.fill([index * 5, 20, 200, 255]);
+                encoder.write_frame(&frame).expect("writes");
+            }
+            encoder.finish().expect("finishes");
+        }
+        let project = dir.join("project");
+        let source = media.to_string_lossy().into_owned();
+        assert!(
+            !ensure(&project, &source, 1920, 1080, None, false, false),
+            "not without the fast preview"
+        );
+        assert!(ensure(&project, &source, 1920, 1080, None, false, true));
+        assert!(progress().is_some(), "said while it is on its way");
+        crate::scheduler().drain();
+        assert_eq!(progress(), None, "and gone once it is done");
+        let proxy = existing(&project, &source, None).expect("the copy was written");
+        let video = concat_media::probe(&proxy)
+            .expect("probes")
+            .video
+            .expect("has pictures");
+        assert_eq!((video.width, video.height), (960, 540));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The fast preview's line takes in full HD and the 1480 by 1080 of a
+    /// film kept in its full frame, but not a small file.
+    #[test]
+    fn the_fast_preview_wants_copies_of_full_hd_too() {
+        assert!(!wanted(1920, 1080));
+        assert!(wanted_fast(1920, 1080));
+        assert!(wanted_fast(1480, 1080));
+        assert!(!wanted_fast(960, 540));
+        assert!(!wanted_fast(640, 360));
+        assert_eq!(size_for(1920, 1080), (960, 540));
+        assert_eq!(size_for(1480, 1080), (960, 700));
+    }
 
     /// An HDR file's proxy keeps its signal: HEVC, HLG as the file is,
     /// its grey coming back as the same signal - under a name of its own,
@@ -404,7 +581,7 @@ mod tests {
         let project = dir.join("project");
         let source = media.to_string_lossy().into_owned();
         assert!(
-            ensure(&project, &source, 2560, 1440, None, false),
+            ensure(&project, &source, 2560, 1440, None, false, false),
             "worth a proxy"
         );
         crate::scheduler().drain();
@@ -418,7 +595,7 @@ mod tests {
             Some(proxy.as_path())
         );
         // Second time round: nothing to write, still adopted.
-        assert!(ensure(&project, &source, 2560, 1440, None, false));
+        assert!(ensure(&project, &source, 2560, 1440, None, false, false));
         let time = FrameRate::THIRTY.time_of_frame(2);
         let moving = pool
             .frame(&concat_media::FrameRequest::new(&source, time, 480, 270).from_proxy(true))
@@ -429,7 +606,7 @@ mod tests {
             .expect("reads the original");
         assert_eq!((paused.width(), paused.height()), (480, 270));
         // A file not worth a proxy is left alone.
-        assert!(!ensure(&project, &source, 1280, 720, None, false));
+        assert!(!ensure(&project, &source, 1280, 720, None, false, false));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1244,5 +1244,11 @@
   "slip.play": "Abspielen",
   "slip.last": "Ende",
   "slip.copy": "Der Clip zeigt eine Kopie nur seines Ausschnitts (flüssige Zeitlupe oder Verbessern). Schalte das aus, um durch den ganzen Film zu wandern.",
-  "scenes.sound": "Szenen mit Originalton einfügen"
+  "scenes.sound": "Szenen mit Originalton einfügen",
+  "settings.fastPreview": "Schnelle Vorschau",
+  "settings.fastPreviewHint": "Jedes Video, das größer ist als ein Viertel von Full HD, bekommt einmal eine kleine Arbeitskopie im Projektordner (cache/proxy), und die Vorschau zeigt nur noch die Kopien – angehalten, beim Wischen und beim Abspielen. Gleiche Bilder an gleicher Stelle, du schneidest also genauso bildgenau, nur viel schneller. Der Export nimmt immer die Originale. Die Kopie eines ganzen Films zu schreiben dauert eine Weile; die Zeile oben zeigt, wie weit sie ist.",
+  "fast.queued": "Vorschau-Kopien warten …",
+  "fast.writing": "Vorschau-Kopie {0} %",
+  "fast.writingUnknown": "Vorschau-Kopie wird geschrieben",
+  "fast.waiting": "{0} in der Warteschlange"
 }

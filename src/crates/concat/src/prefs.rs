@@ -104,6 +104,11 @@ pub struct Preferences {
     /// cut to music. Off by default: a clip keeps the sound it was shot
     /// with, as every other way of adding one does.
     pub scenes_muted: bool,
+    /// Fork: the fast preview - every video larger than a quarter of full
+    /// HD gets a small working copy, and the monitor shows the copies at
+    /// rest, scrubbed and playing; the export reads the originals. Off by
+    /// default: the copies take a while to write and room on the disk.
+    pub fast_preview: bool,
     /// Drawing in software: the window and the compositor on the
     /// platform's software rasteriser (WARP, lavapipe) instead of the GPU,
     /// as the person chose in Settings > General or with `concat

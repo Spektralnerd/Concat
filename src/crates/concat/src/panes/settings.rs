@@ -60,6 +60,9 @@ pub enum SettingsMsg {
     /// Fork: the in-place switch: whether media picked on a phone are used
     /// where they lie instead of copied into the app.
     FilesInPlaceChanged(bool),
+    /// Fork: the fast preview's switch: small copies, and the monitor
+    /// showing them always.
+    FastPreviewChanged(bool),
     /// The remember-layout switch: whether a launch opens on the last
     /// session's panels and window size.
     RememberLayoutChanged(bool),
@@ -400,6 +403,7 @@ impl SettingsPane {
                 // straight away (refresh_art's stamp holds the switch);
                 // off, playback reads the files from the next frame.
             }
+            SettingsMsg::FastPreviewChanged(on) => studio.fast_preview_set(on),
             SettingsMsg::FilesInPlaceChanged(on) => {
                 log::info!("settings: Files where they lie {}", on_off(on));
                 studio.prefs.files_in_place = on;
@@ -1039,6 +1043,7 @@ impl SettingsPane {
                 .unwrap_or(2) as i32,
             playhead_stops: self.playhead_stops,
             proxies: studio.prefs.proxies,
+            fast_preview: studio.prefs.fast_preview,
             files_in_place: studio.prefs.files_in_place && files_access == 2,
             files_in_place_switchable: files_access > 0,
             remember_layout: studio.prefs.remembers_layout(),

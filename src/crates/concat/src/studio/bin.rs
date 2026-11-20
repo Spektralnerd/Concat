@@ -36,11 +36,14 @@ impl Studio {
             Option<concat_media::ColorRange>,
             bool,
         );
+        // Fork: the fast preview wants a copy of full HD too, and has one
+        // whichever way the proxies switch stands.
+        let fast = self.prefs.fast_preview;
         let unproxied: Vec<Unproxied> = self
             .project()
             .media
             .iter()
-            .filter(|_| self.prefs.proxies)
+            .filter(|_| self.prefs.proxies || fast)
             .filter(|item| item.kind == model::MediaKind::Video && !item.placeholder)
             .filter(|item| !self.proxied.contains(&item.id))
             .filter_map(|item| {
@@ -55,16 +58,21 @@ impl Studio {
                 ))
             })
             .collect();
+        let mut copies = false;
         for (id, path, width, height, range, hdr) in unproxied {
-            concat_host::proxy::ensure(
+            copies |= concat_host::proxy::ensure(
                 std::path::Path::new(&project_path),
                 &path,
                 width,
                 height,
                 range,
                 hdr,
+                fast,
             );
             self.proxied.insert(id);
+        }
+        if copies {
+            self.watch_proxies();
         }
         /// A media item whose own art is missing, or another of its audio
         /// streams whose waveform a clip plays.

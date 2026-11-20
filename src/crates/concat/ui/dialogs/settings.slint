@@ -77,6 +77,9 @@ export struct SettingsData {
     playhead-stops: bool,
     /// large files get a smaller copy for playback
     proxies: bool,
+    /// Fork: every video above a quarter of full HD gets a small copy,
+    /// and the monitor shows the copies always; the export the originals
+    fast-preview: bool,
     /// Fork: media picked on the phone are used where they lie (and the
     /// phone lets them be read there)
     files-in-place: bool,
@@ -684,6 +687,7 @@ export component SettingsDialog inherits Sheet {
     callback scale-changed(index: int);
     callback playhead-stops-changed(on: bool);
     callback proxies-changed(on: bool);
+    callback fast-preview-changed(on: bool);
     callback files-in-place-changed(on: bool);
     callback remember-layout-changed(on: bool);
     callback gpu-changed(on: bool);
@@ -1036,6 +1040,20 @@ export component SettingsDialog inherits Sheet {
                     on: root.data.proxies;
                     open: false;
                     switched(on) => { root.proxies-changed(on); }
+                }
+
+                // Fork: on, every video larger than a quarter of full HD
+                // gets a small copy and the monitor shows the copies at
+                // rest, scrubbed and playing - the same frames, decoded far
+                // quicker. The export reads the originals.
+                DialogSection {
+                    ruled: false;
+                    title: I18n.t("settings.fastPreview");
+                    hint: I18n.t("settings.fastPreviewHint");
+                    switchable: true;
+                    on: root.data.fast-preview;
+                    open: false;
+                    switched(on) => { root.fast-preview-changed(on); }
                 }
 
                 // Fork: on, a clip, a song or a picture picked from the

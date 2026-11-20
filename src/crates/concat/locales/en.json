@@ -1263,5 +1263,11 @@
   "slip.play": "Play",
   "slip.last": "End",
   "slip.copy": "The clip shows a copy of only its own stretch (smooth slow motion or Enhance). Turn that off to move through the whole film.",
-  "scenes.sound": "Lay scenes down with their own sound"
+  "scenes.sound": "Lay scenes down with their own sound",
+  "settings.fastPreview": "Fast preview",
+  "settings.fastPreviewHint": "Every video larger than a quarter of full HD gets a small working copy, written once into the project folder (cache/proxy), and the preview shows only the copies - paused, while scrubbing and playing. Same frames at the same moments, so you cut just as frame-accurately, only much faster. The export always uses the originals. Writing the copy of a whole film takes a while; the top line shows how far along it is.",
+  "fast.queued": "Preview copies waiting …",
+  "fast.writing": "Preview copy {0} %",
+  "fast.writingUnknown": "Writing preview copy",
+  "fast.waiting": "{0} queued"
 }

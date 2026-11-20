@@ -372,9 +372,14 @@ impl MonitorPane {
             // the files themselves, or Full would be the proxy blurred up.
             // With proxies off in Settings it plays the files at every
             // quality, a proxy left from before included.
-            proxy: studio.prefs.proxies
-                && (studio.playing || studio.source.as_ref().is_some_and(|source| source.playing))
-                && quality > 0,
+            //
+            // Fork: the fast preview reads the copies always - paused and
+            // scrubbed too - at every quality.
+            proxy: studio.prefs.fast_preview
+                || (studio.prefs.proxies
+                    && (studio.playing
+                        || studio.source.as_ref().is_some_and(|source| source.playing))
+                    && quality > 0),
             color_space: studio.project().active().video.color_space,
             canvas: studio.project().active().video.canvas,
             nearest,

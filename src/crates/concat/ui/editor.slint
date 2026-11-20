@@ -190,6 +190,9 @@ export global Editor {
     /// The picks laid into the rhythm's empty gaps from the playhead on.
     callback scenes-fill();
     callback scenes-fill-set(part: int, slow: bool);
+    /// Fork: while the fast preview's copies are written, how far along -
+    /// for the phone's top line; empty otherwise.
+    in-out property <string> proxy-status;
     /// Scenes are laid down with their own sound; off lays them at no
     /// volume, for an edit cut to music. Kept from one run to the next.
     in-out property <bool> scenes-sound: true;

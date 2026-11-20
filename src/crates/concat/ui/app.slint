@@ -412,6 +412,7 @@ export component App inherits Window {
     callback settings-playhead-stops-changed(on: bool);
     callback settings-proxies-changed(on: bool);
     callback settings-files-in-place-changed(on: bool);
+    callback settings-fast-preview-changed(on: bool);
     callback settings-remember-layout-changed(on: bool);
     callback settings-gpu-changed(on: bool);
     callback settings-magnetic-changed(on: bool);
@@ -1071,6 +1072,7 @@ export component App inherits Window {
         playhead-stops-changed(on) => { root.settings-playhead-stops-changed(on); }
         proxies-changed(on) => { root.settings-proxies-changed(on); }
         files-in-place-changed(on) => { root.settings-files-in-place-changed(on); }
+        fast-preview-changed(on) => { root.settings-fast-preview-changed(on); }
         remember-layout-changed(on) => { root.settings-remember-layout-changed(on); }
         gpu-changed(on) => { root.settings-gpu-changed(on); }
         magnetic-changed(on) => { root.settings-magnetic-changed(on); }

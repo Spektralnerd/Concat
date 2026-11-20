@@ -57,6 +57,7 @@ mod chains;
 #[cfg(test)]
 mod copy_tests;
 mod edit;
+mod fast;
 mod gestures;
 mod imports;
 mod inspector;
@@ -1075,6 +1076,9 @@ pub struct Studio {
     pub playhead: f32,
     pub playing: bool,
     transport: slint::Timer,
+    /// Fork: keeps the line at the top in step with the proxies being
+    /// written; see `fast`.
+    proxy_watch: slint::Timer,
     /// The phone's lanes carrying on after a finger throws them, and the
     /// beat that moves them while they do; see `panes::glide`.
     coast: crate::panes::glide::Coast,
@@ -3183,6 +3187,7 @@ impl Studio {
             // ~20px a second: a ten-second cut fits a pane at its default width.
             playing: false,
             transport: slint::Timer::default(),
+            proxy_watch: slint::Timer::default(),
             coast: crate::panes::glide::Coast::default(),
             glide_beat: slint::Timer::default(),
             hover: None,

@@ -2447,6 +2447,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     app.on_settings_files_in_place_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Settings(SettingsMsg::FilesInPlaceChanged(on)));
     }));
+    app.on_settings_fast_preview_changed(on_window!(|state, on: bool| {
+        state.handle(Msg::Settings(SettingsMsg::FastPreviewChanged(on)));
+    }));
     app.on_settings_remember_layout_changed(on_window!(|state, on: bool| {
         state.handle(Msg::Settings(SettingsMsg::RememberLayoutChanged(on)));
     }));
