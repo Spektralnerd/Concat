@@ -186,6 +186,73 @@ impl Studio {
         }
     }
 
+    /// Fork: the selected clip, its footage, and the moment of the footage
+    /// the playhead shows - with a word on screen when the playhead is
+    /// not on the clip.
+    fn cut_here(&mut self) -> Option<(Clip, model::MediaItem, f64)> {
+        let id = self.sole_selection()?;
+        let clip = self.clip(&id)?.clone();
+        let media = self.footage_of(&clip)?.clone();
+        let playhead = f64::from(self.playhead);
+        if playhead < clip.start || playhead >= clip.start + clip.duration {
+            self.notify(&t("cuts.notOnClip"), false);
+            return None;
+        }
+        let source = clip.source_start
+            + concat_project::speed::source_consumed(&clip, playhead - clip.start);
+        Some((clip, media, source))
+    }
+
+    /// Fork: takes out the cut the playhead stands on - the nearest within
+    /// half a second of it - so the gaps either side of it are one. One
+    /// step to undo.
+    pub fn cuts_remove_here(&mut self) {
+        let Some((clip, media, source)) = self.cut_here() else {
+            return;
+        };
+        let Some(marks) = media.cuts.as_ref() else {
+            self.notify(&t("cuts.noneNear"), false);
+            return;
+        };
+        // Half a second of the timeline, in seconds of the footage.
+        let span = concat_project::speed::source_consumed(&clip, clip.duration);
+        let pace = if clip.duration > 0.0 && span > 0.0 {
+            span / clip.duration
+        } else {
+            1.0
+        };
+        match concat_project::rhythm::without_cut(marks, source, 0.5 * pace) {
+            Some(kept) => {
+                self.apply(Command::SetMediaCuts {
+                    media_id: media.id.clone(),
+                    cuts: Some(kept),
+                });
+            }
+            None => self.notify(&t("cuts.noneNear"), false),
+        }
+    }
+
+    /// Fork: sets a cut where the playhead stands, on the footage's frame
+    /// there - the first of a rhythm begun by hand, if the clip has none
+    /// yet. One step to undo.
+    pub fn cuts_add_here(&mut self) {
+        let Some((_, media, source)) = self.cut_here() else {
+            return;
+        };
+        let rate =
+            super::slip::rate_of(&media).unwrap_or_else(|| f64::from(self.frame_rate().max(1.0)));
+        let source = (source * rate).round() / rate;
+        match concat_project::rhythm::with_cut(media.cuts.as_ref(), source, 0.5 / rate) {
+            Some(marks) => {
+                self.apply(Command::SetMediaCuts {
+                    media_id: media.id.clone(),
+                    cuts: Some(marks),
+                });
+            }
+            None => self.notify(&t("cuts.already"), false),
+        }
+    }
+
     /// Drops the selected clip's cuts.
     pub fn cuts_clear(&mut self) {
         let Some(media) = self.selected_footage() else {

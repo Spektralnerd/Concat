@@ -61,7 +61,7 @@ const CATCH: f64 = 10.0;
 
 /// A frame rate as a bin entry gives it, exact when it can be: "24000/1001"
 /// before 23.976.
-fn rate_of(media: &model::MediaItem) -> Option<f64> {
+pub(super) fn rate_of(media: &model::MediaItem) -> Option<f64> {
     media
         .frame_rate_fraction
         .as_deref()

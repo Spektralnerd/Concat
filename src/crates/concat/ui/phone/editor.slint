@@ -1432,6 +1432,21 @@ export component PhoneEditor inherits Rectangle {
                 current: root.sheet == "clip-cuts";
                 clicked => { root.show("clip-cuts", true); }
             }
+            // Fork: a cut of the edit taken out where the playhead stands,
+            // or set there - the rhythm shaped by hand, the lanes in view.
+            if root.is-video && Editor.selected-clip.cuts-footage
+                && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.close;
+                label: I18n.t("cuts.removeHere");
+                enabled: Editor.selected-clip.cuts-found && Editor.selected-clip.cuts-count > 0;
+                clicked => { Editor.cuts-remove-here(); }
+            }
+            if root.is-video && Editor.selected-clip.cuts-footage
+                && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.plus;
+                label: I18n.t("cuts.addHere");
+                clicked => { Editor.cuts-add-here(); }
+            }
             // Fork: another stretch of the clip's footage in the same place.
             if (root.is-video || root.is-audio) && Editor.selected-clip.slip-footage
                 && !Editor.selected-clip.batch-volume: ToolItem {
@@ -2161,6 +2176,10 @@ export component PhoneEditor inherits Rectangle {
                 glyph: Glyph.trash;
                 label: I18n.t("cuts.clear");
                 clicked => { Editor.cuts-clear(); }
+            }
+            // Fork: where the single cuts are shaped.
+            SheetNote {
+                text: I18n.t("cuts.byHand");
             }
         }
 

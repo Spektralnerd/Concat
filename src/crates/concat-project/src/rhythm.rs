@@ -10,7 +10,7 @@
 //! which of them are still empty, [`fit`] cuts a scene to its gap, and
 //! [`fill`] writes the commands that lay a run of scenes in.
 
-use crate::beats::clip_cuts;
+use crate::beats::{CutMarks, clip_cuts};
 use crate::commands::{ClipSpan, Command};
 use crate::model::{Clip, ClipKind, Project, ranges};
 
@@ -257,6 +257,49 @@ pub fn fill(
         .collect()
 }
 
+/// `marks` without the cut nearest the moment `source` seconds into the
+/// footage, when one lies within `reach` seconds of it - the cut a
+/// playhead stands on, to shape a rhythm by hand. None when no cut is that
+/// near.
+pub fn without_cut(marks: &CutMarks, source: f64, reach: f64) -> Option<CutMarks> {
+    let (index, off) = marks
+        .times
+        .iter()
+        .enumerate()
+        .map(|(index, time)| (index, (time - source).abs()))
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+    if !(off <= reach) {
+        return None;
+    }
+    let mut kept = marks.clone();
+    kept.times.remove(index);
+    Some(kept)
+}
+
+/// `marks` - or none yet: a rhythm begun by hand - with a cut at the
+/// moment `source` seconds into the footage, unless one lies within
+/// `tolerance` of it already. None then, or for a moment before the
+/// footage.
+pub fn with_cut(marks: Option<&CutMarks>, source: f64, tolerance: f64) -> Option<CutMarks> {
+    if !source.is_finite() || source < 0.0 {
+        return None;
+    }
+    let mut marks = marks.cloned().unwrap_or(CutMarks {
+        times: Vec::new(),
+        hidden: false,
+    });
+    if marks
+        .times
+        .iter()
+        .any(|time| (time - source).abs() < tolerance)
+    {
+        return None;
+    }
+    marks.times.push(source);
+    marks.tidy();
+    Some(marks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,6 +310,53 @@ mod tests {
 
     /// Half a frame at 30.
     const TOLERANCE: f64 = 0.5 / 30.0;
+
+    #[test]
+    fn cuts_come_and_go_by_hand() {
+        let marks = CutMarks {
+            times: vec![2.0, 4.5, 7.0],
+            hidden: false,
+        };
+        // The nearest within reach goes; none within reach, nothing.
+        assert_eq!(
+            without_cut(&marks, 4.3, 0.5).map(|kept| kept.times),
+            Some(vec![2.0, 7.0])
+        );
+        assert_eq!(without_cut(&marks, 3.2, 0.5), None);
+        // A new one lands in order; not twice in one place.
+        assert_eq!(
+            with_cut(Some(&marks), 5.5, TOLERANCE).map(|marks| marks.times),
+            Some(vec![2.0, 4.5, 5.5, 7.0])
+        );
+        assert_eq!(with_cut(Some(&marks), 4.51, TOLERANCE), None);
+        // The first of a rhythm begun by hand.
+        assert_eq!(
+            with_cut(None, 1.25, TOLERANCE).map(|marks| marks.times),
+            Some(vec![1.25])
+        );
+        assert_eq!(with_cut(None, -1.0, TOLERANCE), None);
+    }
+
+    #[test]
+    fn a_cut_taken_out_joins_two_gaps_into_one() {
+        let (mut editor, edit, _, _) = fixture();
+        let marks = editor
+            .project()
+            .media_by_id(&edit)
+            .and_then(|media| media.cuts.clone())
+            .expect("cuts");
+        editor
+            .apply(Command::SetMediaCuts {
+                media_id: edit,
+                cuts: without_cut(&marks, 7.0, 0.5),
+            })
+            .expect("sets");
+        let found = rhythm(editor.project(), 0.0, TOLERANCE).expect("a rhythm");
+        assert_eq!(
+            spans(&found),
+            vec![(0, 0.0, 2.0), (1, 2.0, 4.5), (2, 4.5, 10.0)]
+        );
+    }
 
     fn close(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9

@@ -1250,5 +1250,11 @@
   "fast.queued": "Vorschau-Kopien warten …",
   "fast.writing": "Vorschau-Kopie {0} %",
   "fast.writingUnknown": "Vorschau-Kopie wird geschrieben",
-  "fast.waiting": "{0} in der Warteschlange"
+  "fast.waiting": "{0} in der Warteschlange",
+  "cuts.removeHere": "– Schnitt",
+  "cuts.addHere": "+ Schnitt",
+  "cuts.notOnClip": "Stell den Abspielkopf zuerst auf diesen Clip.",
+  "cuts.noneNear": "Kein Schnitt in der Nähe des Abspielkopfs.",
+  "cuts.already": "Hier ist schon ein Schnitt.",
+  "cuts.byHand": "Rhythmus von Hand formen: Bei ausgewähltem Clip entfernt „– Schnitt“ in der Werkzeugleiste den Schnitt, auf dem der Abspielkopf steht, und „+ Schnitt“ setzt dort einen neuen. Jeder Schritt lässt sich einzeln rückgängig machen."
 }

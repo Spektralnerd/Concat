@@ -1269,5 +1269,11 @@
   "fast.queued": "Preview copies waiting …",
   "fast.writing": "Preview copy {0} %",
   "fast.writingUnknown": "Writing preview copy",
-  "fast.waiting": "{0} queued"
+  "fast.waiting": "{0} queued",
+  "cuts.removeHere": "– Cut",
+  "cuts.addHere": "+ Cut",
+  "cuts.notOnClip": "Put the playhead on this clip first.",
+  "cuts.noneNear": "No cut near the playhead.",
+  "cuts.already": "There is a cut here already.",
+  "cuts.byHand": "Shape the rhythm by hand: with the clip selected, “– Cut” in the tools takes out the cut the playhead stands on, “+ Cut” sets one where it stands. Each is one step to undo."
 }
