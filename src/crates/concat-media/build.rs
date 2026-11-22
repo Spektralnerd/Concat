@@ -18,6 +18,20 @@ fn main() {
             for lib in ["z", "m", "atomic", "android", "mediandk", "camera2ndk"] {
                 println!("cargo:rustc-link-lib={lib}");
             }
+            // Fork: libopus, the Opus encoder ffmpeg-mobile.sh builds into
+            // FFmpeg's prefix beside the archives (FFmpeg 8.1's own writes
+            // broken sound), when the FFmpeg linked is one that has it.
+            // Watched by path, so a rebuilt prefix that gains it is seen.
+            println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
+            if let Some(dir) = std::env::var_os("FFMPEG_DIR") {
+                let lib = std::path::Path::new(&dir).join("lib");
+                let opus = lib.join("libopus.a");
+                println!("cargo:rerun-if-changed={}", opus.display());
+                if opus.is_file() {
+                    println!("cargo:rustc-link-search=native={}", lib.display());
+                    println!("cargo:rustc-link-lib=static=opus");
+                }
+            }
         }
         // VideoToolbox and AudioToolbox, the hardware codecs, the
         // frameworks they hand buffers through, and Security for the TLS

@@ -642,9 +642,11 @@ impl MixInput {
 }
 
 /// The Opus encoder to mix into and the samples it takes: libopus where it
-/// is linked, which the desktops' builds and Homebrew carry, and FFmpeg's
-/// own otherwise, which every build has - a phone's included. A WebM takes
-/// Opus or Vorbis and nothing else, and Opus is the better of the two.
+/// is linked, which the desktops' builds and Homebrew carry, and - fork -
+/// the Android build too, since FFmpeg 8.1's own encoder writes a few good
+/// seconds and then noise and silence; FFmpeg's own otherwise, which every
+/// build has. A WebM takes Opus or Vorbis and nothing else, and Opus is
+/// the better of the two.
 fn opus_encoder() -> Result<(&'static str, Sample)> {
     use ffmpeg::util::format::sample::Type;
     if encoder::find_by_name("libopus").is_some() {
@@ -696,8 +698,8 @@ pub enum AudioCodec {
     /// AAC-LC, what every player plays. A phone's own encoder writes it.
     #[default]
     Aac,
-    /// Opus: the same sound in fewer bits. FFmpeg's own encoder on a
-    /// phone, libopus where it is linked.
+    /// Opus: the same sound in fewer bits. libopus where it is linked -
+    /// the desktops and, fork, Android - FFmpeg's own encoder elsewhere.
     Opus,
     /// MP3, where LAME is linked: a desk's FFmpeg, not a phone's.
     Mp3,
@@ -806,9 +808,9 @@ impl AudioCodec {
         }
     }
 
-    /// Whether this build has an encoder for it: a phone has Android's AAC
-    /// and FFmpeg's own Opus, FLAC, ALAC and PCM; MP3 takes LAME, which only
-    /// a desk's FFmpeg links.
+    /// Whether this build has an encoder for it: a phone has Android's AAC,
+    /// libopus (fork; FFmpeg's own Opus on iOS) and FFmpeg's own FLAC, ALAC
+    /// and PCM; MP3 takes LAME, which only a desk's FFmpeg links.
     pub fn encodable(self) -> bool {
         ffi::init();
         if self == AudioCodec::Aac && cfg!(target_os = "android") {
@@ -2486,6 +2488,81 @@ mod tests {
             .bit_rate(),
             None
         );
+        std::fs::remove_dir_all(dir).expect("removes test files");
+    }
+
+    /// Fork: a lossy mix keeps its sound to the end. FFmpeg 8.1's own Opus
+    /// encoder wrote three or four good seconds and then noise and silence,
+    /// which no one-second tone shows: a long tone is mixed with every lossy
+    /// codec this build writes, and every second of what comes back is as
+    /// loud as the tone, and the whole of it is there.
+    #[test]
+    fn a_long_lossy_mix_is_heard_to_its_end() {
+        use crate::{AudioDecoder, AudioOptions};
+
+        let dir = std::env::temp_dir().join(format!("concat-long-mix-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("creates a folder");
+        let seconds = 12.0;
+        let tone = dir.join("tone.wav");
+        tone_wav(&tone, seconds);
+        let piece = AudioClip {
+            path: tone,
+            duration: seconds,
+            ..clip("")
+        };
+        // The tone's level: a sine at half scale.
+        let level = 0.5 * 32767.0 / std::f64::consts::SQRT_2;
+        let per_second = MIX_RATE as usize * 2;
+        let mut heard = Vec::new();
+        for codec in AudioCodec::ALL {
+            if !codec.lossy() || !codec.encodable() {
+                continue;
+            }
+            let extension = if codec == AudioCodec::Aac {
+                "m4a"
+            } else {
+                "mp4"
+            };
+            let sound = dir.join(format!("long-{}.{extension}", codec.name()));
+            let format = AudioFormat { codec, kbps: 128 };
+            mix_to_file_as(
+                std::slice::from_ref(&piece),
+                &[],
+                seconds,
+                &sound,
+                format,
+                &mut |_| true,
+            )
+            .unwrap_or_else(|error| panic!("{} mixes: {error}", codec.label()));
+            let mut decoder =
+                AudioDecoder::open(&sound, &AudioOptions::default()).expect("opens the sound");
+            let mut samples = Vec::new();
+            while let Some(block) = decoder.next_i16().expect("decodes") {
+                samples.extend_from_slice(&block);
+            }
+            let length = samples.len() as f64 / per_second as f64;
+            assert!(
+                (length - seconds).abs() < 0.1,
+                "{}: {length:.3} s of sound for a {seconds} s mix",
+                codec.label()
+            );
+            for (second, window) in samples.chunks_exact(per_second).enumerate() {
+                let power = window
+                    .iter()
+                    .map(|sample| f64::from(*sample).powi(2))
+                    .sum::<f64>()
+                    / window.len() as f64;
+                let ratio = power.sqrt() / level;
+                assert!(
+                    (0.7..1.4).contains(&ratio),
+                    "{}: second {second} is at {ratio:.2} of the tone's level",
+                    codec.label()
+                );
+            }
+            heard.push(codec.label());
+        }
+        eprintln!("heard to the end: {heard:?}");
+        assert!(!heard.is_empty(), "no lossy codec in the linked FFmpeg");
         std::fs::remove_dir_all(dir).expect("removes test files");
     }
 
