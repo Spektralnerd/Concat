@@ -2020,6 +2020,7 @@ fn command_kind(command: &Command) -> &'static str {
         Command::MoveClips { .. } => "Move",
         Command::TrimClip { .. } => "Trim",
         Command::SlipClip { .. } => "Slip",
+        Command::ReplaceClipSource { .. } => "Replace a clip's scene",
         Command::SplitClips { .. } => "Split",
         Command::ReplaceClipMedia { .. } => "Replace clip's file",
         Command::SetClipEnhanced { on: true, .. } => "Enhance on",

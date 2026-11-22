@@ -693,6 +693,29 @@ pub enum Command {
         /// Where each clip is going.
         moves: Vec<ClipMove>,
     },
+    /// Fork: puts another bin item in a clip's place - a scene swapped
+    /// for a better one in a finished cut. The clip keeps its start, its
+    /// lane, its looks, its moves and the transitions on its cuts, and
+    /// never reaches into the clip after it on its lane, so nothing after
+    /// it moves; it plays `media_id` from `source_start` at `speed` for
+    /// `duration` seconds, held to the file: no further than its end. A still becomes a still, at its own
+    /// pace. Copies made of the clip's old file - its smooth slow motion,
+    /// its Enhance - go with it, as does a speed curve timed to it. A
+    /// picture clip takes a video or a still, a sound clip a sound; an
+    /// unknown clip or file, or one of the wrong kind, is left as it is.
+    ReplaceClipSource {
+        /// The clip to put the file into.
+        clip_id: String,
+        /// The bin item it plays from now on.
+        media_id: String,
+        /// Where in that file it starts, in seconds.
+        source_start: f64,
+        /// How long it runs on the timeline, at most up to the clip after
+        /// it on its lane.
+        duration: f64,
+        /// How fast it plays the file.
+        speed: f64,
+    },
     /// Fork: shows another stretch of a clip's footage in the same place -
     /// a slip. The clip keeps its start, its length, its speed and all
     /// that is timed on it, so it still fills the gap it was cut to and
@@ -1364,6 +1387,12 @@ impl Command {
             Command::MoveClips { moves } => bad(moves.iter().map(|wanted| wanted.start)),
             Command::TrimClip { delta, .. } => bad([*delta]),
             Command::SlipClip { source_start, .. } => bad([*source_start]),
+            Command::ReplaceClipSource {
+                source_start,
+                duration,
+                speed,
+                ..
+            } => bad([*source_start, *duration, *speed]),
             Command::SplitClips { time, .. } => bad([*time]),
             Command::FreezeFrame { time, duration, .. } => bad([*time]) || bad(*duration),
             Command::ReplaceClipMedia {
@@ -1528,6 +1557,7 @@ pub fn apply(
         | Command::MoveClips { .. }
         | Command::TrimClip { .. }
         | Command::SlipClip { .. }
+        | Command::ReplaceClipSource { .. }
         | Command::SplitClips { .. }
         | Command::FreezeFrame { .. }
         | Command::ReplaceClipMedia { .. }

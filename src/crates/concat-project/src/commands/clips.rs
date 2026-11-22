@@ -383,6 +383,73 @@ pub(super) fn apply(
             })
         }
 
+        Command::ReplaceClipSource {
+            clip_id,
+            media_id,
+            source_start,
+            duration,
+            speed,
+        } => {
+            let Some(media) = project.media_by_id(&media_id).cloned() else {
+                return Ok(Outcome::default());
+            };
+            // The room it has: up to the next clip on its lane.
+            let room = {
+                let timeline = project.active();
+                let Some(clip) = timeline.clip(&clip_id) else {
+                    return Ok(Outcome::default());
+                };
+                timeline
+                    .clips
+                    .iter()
+                    .filter(|other| {
+                        other.id != clip.id
+                            && other.track_id == clip.track_id
+                            && other.start >= clip.start + 1e-6
+                    })
+                    .map(|other| other.start - clip.start)
+                    .fold(f64::INFINITY, f64::min)
+            };
+            let timeline = project.active_mut();
+            let Some(clip) = timeline.clip_mut(&clip_id) else {
+                return Ok(Outcome::default());
+            };
+            let kind = match (clip.kind, media.kind) {
+                (ClipKind::Video | ClipKind::Image, MediaKind::Video) => ClipKind::Video,
+                (ClipKind::Video | ClipKind::Image, MediaKind::Image) => ClipKind::Image,
+                (ClipKind::Audio, MediaKind::Audio) => ClipKind::Audio,
+                _ => return Ok(Outcome::default()),
+            };
+            let length = clip_length(&media);
+            let (source_start, speed) = if kind == ClipKind::Image {
+                (0.0, 1.0)
+            } else {
+                (
+                    source_start.clamp(0.0, (length - MIN_CLIP_DURATION).max(0.0)),
+                    speed.clamp(MIN_SPEED, MAX_SPEED),
+                )
+            };
+            // Never into the clip after it, so nothing after it moves;
+            // never past the file's end.
+            let mut duration = duration.min(room);
+            if kind != ClipKind::Image {
+                duration = duration.min((length - source_start) / speed);
+            }
+            clip.media_id = media.id.clone();
+            clip.name = media.name.clone();
+            clip.kind = kind;
+            clip.source_start = source_start;
+            clip.speed = speed;
+            clip.duration = duration.max(MIN_CLIP_DURATION);
+            clip.speed_curve = None;
+            clip.smooth = None;
+            clip.enhanced = None;
+            Ok(Outcome {
+                created_id: None,
+                applied: true,
+            })
+        }
+
         Command::SlipClip {
             clip_id,
             source_start,
