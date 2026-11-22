@@ -71,6 +71,7 @@ mod placing;
 mod project_files;
 mod project_zip;
 mod publish;
+mod replace;
 mod scenes;
 mod slip;
 mod smooth;
@@ -1313,6 +1314,9 @@ pub struct Studio {
     /// scene list of the film the sheet was opened on. See `slip`.
     slip: Option<slip::SlipDrag>,
     slip_scenes: Option<slip::SlipScenes>,
+    /// Fork: the clip a pick from the bin or the Scenes sheet replaces,
+    /// while its Replace tool has the bin open. See `replace`.
+    replace_target: Option<String>,
     /// Fork: where playback stops of itself before the timeline's end - a
     /// clip played once from the Ausschnitt sheet. A pause or a seek lets
     /// it go.
@@ -3274,6 +3278,7 @@ impl Studio {
             cut_cancels: HashMap::new(),
             slip: None,
             slip_scenes: None,
+            replace_target: None,
             play_until: None,
             beat_marks: RefCell::new(HashMap::new()),
             voice_jobs: HashMap::new(),

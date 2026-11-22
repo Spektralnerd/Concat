@@ -85,7 +85,7 @@ fn knobs() -> (f32, f32) {
 /// end), and whether one shorter than its gap is slowed to fill it.
 static FILL: Mutex<(i32, bool)> = Mutex::new((0, true));
 
-fn fill_knobs() -> (i32, bool) {
+pub(super) fn fill_knobs() -> (i32, bool) {
     *FILL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
@@ -481,6 +481,33 @@ impl Studio {
         // Half a frame of the timeline is one moment.
         let tolerance = 0.5 / f64::from(self.frame_rate().max(1.0));
         rhythm::rhythm(self.project(), f64::from(self.playhead.max(0.0)), tolerance)
+    }
+
+    /// Fork: the one scene picked goes into the clip Replace was opened
+    /// for, instead of onto the lanes as a clip of its own.
+    pub fn scenes_replace(&mut self) {
+        let Some((media_id, list, fps, picked)) = self.scenes.as_ref().and_then(|view| {
+            Some((
+                view.media_id.clone(),
+                view.list.clone()?,
+                view.fps,
+                view.picked.clone(),
+            ))
+        }) else {
+            return;
+        };
+        let [scene] = picked[..] else {
+            return;
+        };
+        let (start, end) = list.scene(scene);
+        self.replace_with(
+            &media_id,
+            start as f64 / fps,
+            Some((end - start) as f64 / fps),
+        );
+        if let Some(view) = self.scenes.as_mut() {
+            view.picked.clear();
+        }
     }
 
     /// Whether scenes are laid down with their own sound, from now on and

@@ -1256,5 +1256,10 @@
   "cuts.notOnClip": "Stell den Abspielkopf zuerst auf diesen Clip.",
   "cuts.noneNear": "Kein Schnitt in der Nähe des Abspielkopfs.",
   "cuts.already": "Hier ist schon ein Schnitt.",
-  "cuts.byHand": "Rhythmus von Hand formen: Bei ausgewähltem Clip entfernt „– Schnitt“ in der Werkzeugleiste den Schnitt, auf dem der Abspielkopf steht, und „+ Schnitt“ setzt dort einen neuen. Jeder Schritt lässt sich einzeln rückgängig machen."
+  "cuts.byHand": "Rhythmus von Hand formen: Bei ausgewähltem Clip entfernt „– Schnitt“ in der Werkzeugleiste den Schnitt, auf dem der Abspielkopf steht, und „+ Schnitt“ setzt dort einen neuen. Jeder Schritt lässt sich einzeln rückgängig machen.",
+  "replace.tool": "Ersetzen",
+  "replace.title": "Clip ersetzen durch …",
+  "replace.pick": "Tippe die Szene an, die an die Stelle des ausgewählten Clips soll. Sie übernimmt seinen Platz und seine Länge, nichts danach verschiebt sich. Bei einem ganzen Film wählst du über „Szenen“ eine einzelne Szene daraus.",
+  "replace.do": "Clip ersetzen",
+  "replace.noClip": "Wähle zuerst in der Zeitleiste den Clip aus, den du ersetzen willst."
 }

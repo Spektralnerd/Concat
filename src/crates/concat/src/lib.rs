@@ -1086,6 +1086,18 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_media_add_picked(on_window!(|state, at_end: bool| {
         state.handle(Msg::Media(MediaMsg::AddPicked { at_end }));
     }));
+    editor.on_media_replace_picked(on_window!(|state| {
+        state.handle(Msg::Media(MediaMsg::ReplacePicked));
+    }));
+    editor.on_replace_begin(on_window!(|state| {
+        state.replace_begin();
+    }));
+    editor.on_replace_end(on_window!(|state| {
+        state.replace_end();
+    }));
+    editor.on_scenes_replace(on_window!(|state| {
+        state.scenes_replace();
+    }));
     editor.on_media_clear_picks(on_window!(|state| {
         state.handle(Msg::Media(MediaMsg::ClearPicks));
     }));

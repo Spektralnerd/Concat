@@ -202,6 +202,13 @@ export global Editor {
     /// moved `moved` points along a strip `width` points wide, and up; a
     /// step by frames of the footage and seconds; and a look at the clip's
     /// first frame (0), its last (1), or the clip played once (2).
+    /// Fork: Replace - the selected clip noted as the one a pick goes
+    /// into, and let go of again; the one file picked in the bin, or the
+    /// one scene picked in the Scenes sheet, put in its place.
+    callback replace-begin();
+    callback replace-end();
+    callback media-replace-picked();
+    callback scenes-replace();
     /// Fork: a cut of the selected clip's footage taken out where the
     /// playhead stands, or set there.
     callback cuts-remove-here();

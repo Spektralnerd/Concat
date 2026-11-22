@@ -670,6 +670,9 @@ export component PhoneEditor inherits Rectangle {
     /// The Media sheet was opened from the lanes' plus: Add goes after the
     /// main lane's last clip rather than at the playhead.
     property <bool> media-at-end;
+    /// Fork: the bin, and the Scenes sheet from it, are open for the
+    /// selected clip's Replace: a pick goes into its place.
+    property <bool> replacing;
     /// The sheet up is one of the clip's, and goes with the clip.
     property <bool> sheet-needs-clip;
 
@@ -700,12 +703,20 @@ export component PhoneEditor inherits Rectangle {
         if (root.sheet == "scenes" && name != "scenes") {
             Editor.scenes-close();
         }
+        if (root.replacing && name != "media" && name != "scenes") {
+            Editor.replace-end();
+            root.replacing = false;
+        }
         root.sheet = name;
         root.sheet-needs-clip = needs-clip;
     }
     function hide() {
         if (root.sheet == "scenes") {
             Editor.scenes-close();
+        }
+        if (root.replacing) {
+            Editor.replace-end();
+            root.replacing = false;
         }
         root.sheet = "";
         root.sheet-needs-clip = false;
@@ -718,7 +729,7 @@ export component PhoneEditor inherits Rectangle {
     }
 
     pure function sheet-title(name: string) -> string {
-        return name == "media" ? I18n.t("common.media")
+        return name == "media" ? (root.replacing ? I18n.t("replace.title") : I18n.t("common.media"))
             : name == "audio" ? I18n.t("common.audio")
             : name == "text" || name == "clip-text" ? I18n.t("common.text")
             : name == "clip-shape" ? I18n.t("shapePanel.shape")
@@ -774,7 +785,7 @@ export component PhoneEditor inherits Rectangle {
     /// The Add bar under the bin while something is picked.
     property <length> add-bar-h: 68px;
     /// Fork: the scenes' Add bar, a row taller with a rhythm to fill.
-    property <length> scenes-bar-h: Editor.scenes-rhythm ? 120px : root.add-bar-h;
+    property <length> scenes-bar-h: Editor.scenes-rhythm && !root.replacing ? 120px : root.add-bar-h;
 
     // ── the top bar ──────────────────────────────────────────────────
     Rectangle {
@@ -1447,6 +1458,18 @@ export component PhoneEditor inherits Rectangle {
                 label: I18n.t("cuts.addHere");
                 clicked => { Editor.cuts-add-here(); }
             }
+            // Fork: another scene in this clip's place, nothing after it
+            // moving: the bin opens for the pick.
+            if (root.is-picture || root.is-audio) && !Editor.selected-clip.batch-volume: ToolItem {
+                glyph: Glyph.import;
+                label: I18n.t("replace.tool");
+                current: root.replacing;
+                clicked => {
+                    Editor.replace-begin();
+                    root.show-media(false);
+                    root.replacing = true;
+                }
+            }
             // Fork: another stretch of the clip's footage in the same place.
             if (root.is-video || root.is-audio) && Editor.selected-clip.slip-footage
                 && !Editor.selected-clip.batch-volume: ToolItem {
@@ -1581,6 +1604,7 @@ export component PhoneEditor inherits Rectangle {
             }
             SheetNote {
                 text: Editor.media.length == 0 ? I18n.t("phone.noMediaYet")
+                    : root.replacing ? I18n.t("replace.pick")
                     : root.media-at-end ? I18n.t("phone.pickToAddAtEnd")
                     : I18n.t("phone.pickToAdd");
             }
@@ -2488,13 +2512,25 @@ export component PhoneEditor inherits Rectangle {
             padding-bottom: 12px;
             spacing: 8px;
 
-            SheetButton {
+            if !root.replacing: SheetButton {
                 horizontal-stretch: 1;
                 glyph: Glyph.plus;
                 primary: true;
                 label: I18n.t1("phone.addPicked", Editor.media-selected-count);
                 clicked => {
                     Editor.media-add-picked(root.media-at-end);
+                    root.hide();
+                }
+            }
+            // Fork: the one file picked into the clip's place.
+            if root.replacing: SheetButton {
+                horizontal-stretch: 1;
+                glyph: Glyph.import;
+                primary: true;
+                enabled: Editor.media-selected-count == 1;
+                label: I18n.t("replace.do");
+                clicked => {
+                    Editor.media-replace-picked();
                     root.hide();
                 }
             }
@@ -2551,15 +2587,27 @@ export component PhoneEditor inherits Rectangle {
             padding-bottom: 12px;
             spacing: 8px;
 
+            // Fork: open for a Replace, the one scene picked goes into the
+            // clip's place.
+            if root.replacing: SheetButton {
+                glyph: Glyph.import;
+                primary: true;
+                enabled: Editor.scenes-picked-count == 1;
+                label: I18n.t("replace.do");
+                clicked => {
+                    Editor.scenes-replace();
+                    root.hide();
+                }
+            }
             // With a rhythm on the lanes, laying the picks into its gaps
             // comes first.
-            if Editor.scenes-rhythm: SheetButton {
+            if Editor.scenes-rhythm && !root.replacing: SheetButton {
                 glyph: Glyph.razor;
                 primary: true;
                 label: I18n.t1("scenes.fill", Editor.scenes-picked-count);
                 clicked => { Editor.scenes-fill(); }
             }
-            HorizontalLayout {
+            if !root.replacing: HorizontalLayout {
                 spacing: 8px;
 
                 SheetButton {

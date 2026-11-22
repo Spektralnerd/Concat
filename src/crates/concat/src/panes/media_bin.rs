@@ -59,6 +59,9 @@ pub enum MediaMsg {
     /// The phone's Add: what was picked, in the order it was picked, onto
     /// the main lane - at the playhead, or after the last picture on it
     /// when `at_end` (the lanes' plus).
+    /// Fork: the one file picked goes into the clip Replace was opened
+    /// for.
+    ReplacePicked,
     AddPicked {
         at_end: bool,
     },
@@ -312,6 +315,14 @@ impl MediaBin {
                 });
             }
             MediaMsg::AddPicked { at_end } => self.add_picked(studio, at_end),
+            MediaMsg::ReplacePicked => {
+                let ids = self.picked_in_order(studio.project());
+                if let [id] = &ids[..] {
+                    studio.replace_with(id, 0.0, None);
+                    self.selected.clear();
+                    self.picked.clear();
+                }
+            }
             MediaMsg::ClearPicks => {
                 self.selected.clear();
                 self.picked.clear();
