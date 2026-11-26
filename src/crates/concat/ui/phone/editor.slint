@@ -821,11 +821,15 @@ export component PhoneEditor inherits Rectangle {
                     horizontal-alignment: center;
                     overflow: elide;
                 }
-                // Fork: while the fast preview's copies are written, how
-                // far along, in the accent so it is seen.
+                // Fork: while the fast preview's copies are written, or the
+                // smooth slow motion queue runs, how far along, in the accent
+                // so it is seen.
                 Text {
-                    text: Editor.proxy-status != "" ? Editor.proxy-status : root.status;
-                    color: Editor.proxy-status != "" ? Theme.accent : Theme.fg-dim;
+                    text: Editor.proxy-status != "" ? Editor.proxy-status
+                        : Editor.smooth-queue-active ? Editor.smooth-queue-line
+                        : root.status;
+                    color: Editor.proxy-status != "" || Editor.smooth-queue-active
+                        ? Theme.accent : Theme.fg-dim;
                     font-size: Theme.fs-xs;
                     horizontal-alignment: center;
                     overflow: elide;

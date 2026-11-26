@@ -124,6 +124,57 @@ pub fn opening_speed(clip: &Clip) -> f64 {
         .unwrap_or(clip.speed)
 }
 
+/// Fork: the slowest a clip plays - the lowest of its curve's points, or
+/// its rate without one. A curve's extremes are at its points: no stretch
+/// between two of them overshoots, straight or eased.
+pub fn slowest_speed(clip: &Clip) -> f64 {
+    clip.speed_curve
+        .as_deref()
+        .filter(|points| points.len() >= 2)
+        .and_then(|points| points.iter().map(|point| point.speed).min_by(f64::total_cmp))
+        .unwrap_or(clip.speed)
+}
+
+/// Fork: below this many timeline frames for each of the file's, a clip is
+/// not slowed enough to be worth a smooth copy - a frame held now and then
+/// does not show, and a run takes minutes on a phone.
+pub const SMOOTH_WANTED_FROM: f64 = 1.25;
+
+/// Fork: how far short of the frames wanted a copy may fall and still
+/// count as enough - a film's 23.976 frames on a 24 fps timeline at half
+/// speed want 2.002, and a frame held once in forty seconds does not show,
+/// where twice the frames would take twice as long.
+pub const SMOOTH_FRAMES_SLACK: f64 = 1.005;
+
+/// Fork: how many frames a smooth copy should hold for each of its file's,
+/// for a clip whose slowest stretch plays at `slowest`, on a timeline at
+/// `timeline_rate` frames a second from a file at `file_rate`: the fewest
+/// of `offered` that give every timeline frame a picture of its own even
+/// there, or the most offered when none does. None when the clip is not
+/// slowed at all, or not enough to want any ([`SMOOTH_WANTED_FROM`]) - a
+/// film at full speed on a 30 fps timeline holds frames too, but that is
+/// not slow motion - or when a rate is unknown.
+pub fn smooth_frames_for(
+    timeline_rate: f64,
+    file_rate: f64,
+    slowest: f64,
+    offered: &[u32],
+) -> Option<u32> {
+    if !(timeline_rate > 0.0 && file_rate > 0.0 && slowest > 0.0) || slowest >= 1.0 - 1e-9 {
+        return None;
+    }
+    let wanted = timeline_rate / (file_rate * slowest);
+    if wanted < SMOOTH_WANTED_FROM {
+        return None;
+    }
+    offered
+        .iter()
+        .copied()
+        .filter(|&frames| f64::from(frames) * SMOOTH_FRAMES_SLACK >= wanted)
+        .min()
+        .or_else(|| offered.iter().copied().max())
+}
+
 /// Gives a clip the part of its curve a trim or a split leaves it, and the
 /// rate that part averages. `old` is the length the curve was drawn over and
 /// `[from, to]` the window of it the clip now covers, in seconds from the
@@ -483,5 +534,50 @@ mod tests {
         assert_eq!(source_consumed(&clip, 8.0), 10.0);
         assert_eq!(source_consumed(&clip, 9.0), 12.0, "on at double");
         assert_eq!(opening_speed(&clip), 0.5);
+    }
+
+    #[test]
+    fn a_clip_is_as_slow_as_its_lowest_point_or_its_rate() {
+        let velocity = clip_with(
+            vec![
+                point(0.0, 1.0, Some(0.0)),
+                point(0.4, 1.0, Some(0.0)),
+                point(0.55, 0.35, Some(0.0)),
+                point(1.0, 0.35, Some(0.0)),
+            ],
+            1.0,
+        );
+        assert_eq!(slowest_speed(&velocity), 0.35);
+        let mut steady = Clip::blank("c2", "t1", ClipKind::Video, "clip", 0.0, 1.0);
+        steady.speed = 0.6;
+        assert_eq!(slowest_speed(&steady), 0.6);
+    }
+
+    #[test]
+    fn a_slowed_clip_wants_the_fewest_frames_that_give_each_timeline_frame_its_own() {
+        const OFFERED: [u32; 5] = [2, 4, 8, 16, 32];
+        let film = 24000.0 / 1001.0;
+        let at = |timeline: f64, slowest: f64| smooth_frames_for(timeline, film, slowest, &OFFERED);
+        // A film on a 24 fps timeline: a third wants three, so four.
+        assert_eq!(at(24.0, 0.35), Some(4));
+        assert_eq!(at(24.0, 0.3), Some(4));
+        assert_eq!(at(24.0, 0.45), Some(4), "2.2 frames are more than two");
+        assert_eq!(at(24.0, 0.6), Some(2));
+        assert_eq!(at(24.0, 0.15), Some(8));
+        assert_eq!(at(24.0, 0.5), Some(2), "a hair over two is two");
+        // Hardly slowed, or not at all: nothing worth a run.
+        assert_eq!(at(24.0, 0.85), None);
+        assert_eq!(at(24.0, 1.0), None);
+        assert_eq!(at(24.0, 3.0), None);
+        // Full speed on a 30 fps timeline holds a frame in five, but is not
+        // slow motion; a little slower is.
+        assert_eq!(at(30.0, 1.0), None);
+        assert_eq!(at(30.0, 0.9), Some(2));
+        // A 60 fps export of the same wants more of each.
+        assert_eq!(at(60.0, 0.35), Some(8));
+        // Slower than the most offered allows: the most.
+        assert_eq!(at(24.0, 0.01), Some(32));
+        // A rate not known: no answer rather than a guess.
+        assert_eq!(smooth_frames_for(24.0, 0.0, 0.35, &OFFERED), None);
     }
 }

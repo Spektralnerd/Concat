@@ -1378,6 +1378,8 @@ pub struct Studio {
     smooth_method: concat_host::tween::Method,
     /// Faster, the switch under AI: the motion read at half size.
     smooth_quick: bool,
+    /// Fork: the queue "All slowed clips" lines up, while it runs.
+    smooth_queue: Option<smooth::SmoothQueue>,
     /// Clips whose section is ticked but that have no copy yet, as for
     /// Enhance.
     smooth_ticked: HashSet<String>,
@@ -3298,6 +3300,7 @@ impl Studio {
             smooth_factor: 4,
             smooth_method: concat_host::tween::Method::Motion,
             smooth_quick: false,
+            smooth_queue: None,
             smooth_ticked: HashSet::new(),
             reverse_jobs: HashMap::new(),
             merge_job: None,

@@ -471,6 +471,14 @@ export global Editor {
     callback clip-smooth-method(method: int);
     callback clip-smooth-quick(on: bool);
     callback clip-smooth-run();
+    /// Fork: the queue - every slowed clip on the timeline made smooth one
+    /// after another, each with the frames its slowest stretch wants - and
+    /// its Stop. While it runs, its line and share done.
+    callback clip-smooth-queue-all();
+    callback clip-smooth-queue-stop();
+    in-out property <bool> smooth-queue-active;
+    in-out property <string> smooth-queue-line;
+    in-out property <float> smooth-queue-progress;
     /// The transition riding into the selected clip; see VideoPanel.
     callback transition-remove();
     callback transition-duration-set(seconds: float);

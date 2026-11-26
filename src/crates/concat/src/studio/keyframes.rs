@@ -1459,7 +1459,7 @@ impl Studio {
                 .is_some_and(|(fetching, _)| *fetching),
             smooth_linked: clip.smooth.is_some(),
             smooth_on: self.smooth_ticked(clip),
-            smooth_busy: !self.smooth_jobs.is_empty(),
+            smooth_busy: !self.smooth_jobs.is_empty() || self.smooth_queue.is_some(),
             smooth_footage: smooth.footage,
             smooth_factor: smooth.factor,
             smooth_method: concat_host::tween::Method::ALL
@@ -2005,6 +2005,11 @@ impl Studio {
         editor.set_scenes_fill_part(scenes.fill_part);
         editor.set_scenes_fill_slow(scenes.fill_slow);
         editor.set_scenes_sound(scenes.sound);
+        // Fork: the smooth slow motion queue.
+        let queue = self.smooth_queue_readout();
+        editor.set_smooth_queue_active(queue.active);
+        editor.set_smooth_queue_line(queue.line.into());
+        editor.set_smooth_queue_progress(queue.progress);
         editor.set_media_filter(self.media.filter);
         editor.set_media_jump_token(self.media_jump);
         editor.set_captions_jump_token(self.captions_jump);

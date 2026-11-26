@@ -12,6 +12,7 @@
 //! clip's in-point, length, speed and curve are left as they were.
 
 use concat_host::tween::{self as host_tween, Method, TweenRequest};
+use concat_project::speed;
 
 use super::*;
 
@@ -26,6 +27,40 @@ pub(super) struct SmoothReadout {
     pub made: String,
     /// The frames a second the clip's file has and the copy would have.
     pub rates: String,
+}
+
+/// Fork: the queue the section's "All slowed clips" lines up - every
+/// slowed clip on the timeline made smooth one after another, each with as
+/// many frames as its slowest stretch wants, by the method the section had
+/// when it was asked. One run at a time still: the queue starts the next
+/// when the last is through, however it ended.
+pub(super) struct SmoothQueue {
+    /// Clips still to make, in timeline order, with their frames.
+    pending: std::collections::VecDeque<(String, u32)>,
+    /// The clip being made now.
+    current: Option<String>,
+    /// How many were lined up, how many are through - made, failed or
+    /// stopped by hand - and how many of those failed.
+    total: usize,
+    through: usize,
+    failed: usize,
+    method: Method,
+    /// Clips whose tick the queue put on itself, without a copy before:
+    /// taken off again for any it did not make.
+    ticked_here: HashSet<String>,
+    /// The phone's screen kept on from the first clip to the last. Each run
+    /// holds it too, but only while it runs: between two the screen would
+    /// time out and the rest wait in the dark.
+    _awake: concat_host::awake::Awake,
+}
+
+/// Fork: the queue's line for the section and the phone's top line.
+pub(super) struct SmoothQueueReadout {
+    pub active: bool,
+    /// "Smooth slow motion 3 of 41 · 7 %", empty while no queue runs.
+    pub line: String,
+    /// The whole queue's share done, the clip in hand counted by its part.
+    pub progress: f32,
 }
 
 impl Studio {
@@ -130,33 +165,41 @@ impl Studio {
         }
     }
 
-    /// Makes the smooth copy of the span clip `id` shows, and points the
-    /// clip at it when it is whole and the section still ticked.
+    /// Makes the smooth copy of the span clip `id` shows, with the
+    /// section's Frames and Method, and points the clip at it when it is
+    /// whole and the section still ticked.
     pub fn smooth_clip(&mut self, id: &str) {
+        let method = self.smooth_method.with_quick(self.smooth_quick);
+        self.smooth_clip_with(id, self.smooth_factor, method);
+    }
+
+    /// [`Self::smooth_clip`] with the frames asked and the method given:
+    /// the section's for its button, a clip's own for the queue. Whether a
+    /// run started.
+    fn smooth_clip_with(&mut self, id: &str, asked: u32, method: Method) -> bool {
         if !self.smooth_jobs.is_empty() || self.host.tweeners.is_busy() {
             self.notify(&t("studio.smoothAlreadyWorkOne"), true);
-            return;
+            return false;
         }
         let Some(clip) = self.clip(id).cloned() else {
-            return;
+            return false;
         };
         if clip.kind != model::ClipKind::Video {
-            return;
+            return false;
         }
         let Some(media) = self.smooth_source(&clip) else {
-            return;
+            return false;
         };
         let Some(session) = self.session.as_ref() else {
-            return;
+            return false;
         };
         let project = std::path::PathBuf::from(session.path());
         if media.width.unwrap_or(0) == 0 || media.height.unwrap_or(0) == 0 {
             self.notify(&t("studio.fileHasNoPicture"), true);
-            return;
+            return false;
         }
         let fps = media.frame_rate.unwrap_or(30.0);
-        let factor = host_tween::effective_factor(self.smooth_factor, fps);
-        let method = self.smooth_method.with_quick(self.smooth_quick);
+        let factor = host_tween::effective_factor(asked, fps);
         // The span the clip shows of the original, and a second either side
         // so a small trim after is still inside the copy.
         let start = Self::smooth_original_start(&clip);
@@ -167,7 +210,7 @@ impl Studio {
         let Some(target) = host_tween::target_for(&project, &media.path, factor, method, span)
         else {
             self.notify(&tf("studio.couldNotRead", &[&media.path]), true);
-            return;
+            return false;
         };
         let request = TweenRequest {
             media_path: media.path.clone(),
@@ -219,6 +262,9 @@ impl Studio {
             },
             move |studio, _, _, (clip_id, result)| {
                 studio.smooth_jobs.remove(&clip_id);
+                // Fork: what the queue counts - a stop by hand is not a
+                // failure, only an error is.
+                let failed = matches!(&result, Err(error) if !error.contains("cancelled"));
                 // A cancelled or failed run leaves the clip as it was, and so
                 // does one whose tick went off as it finished: the copy stays
                 // in the cache, and ticking and running again find it.
@@ -249,8 +295,11 @@ impl Studio {
                         studio.notify(&tf("studio.smooth", &[&error]), true);
                     }
                 }
+                // Fork: the queue, if this was its clip, goes on to the next.
+                studio.smooth_queue_after(&clip_id, failed);
             },
         );
+        true
     }
 
     /// Points clip `id` at the smooth copy at `path`, which starts `offset`
@@ -347,6 +396,236 @@ impl Studio {
             factor: factor as i32,
             made,
             rates,
+        }
+    }
+
+    /// Fork: the section's "All slowed clips". Lines up every clip on the
+    /// timeline - or of the selection, when it holds more than one -
+    /// slowed enough to want frames between its own
+    /// ([`speed::smooth_frames_for`]) that has no copy made that way yet,
+    /// and makes them one after another, in timeline order. Left out: clips
+    /// on a hidden or locked lane - a template's guide edit, say - and
+    /// clips switched back to their original by hand. The frames are each
+    /// clip's own, for its slowest stretch at the timeline's rate; the
+    /// method is the section's.
+    pub fn clip_smooth_queue_all(&mut self) {
+        if self.smooth_queue.is_some() {
+            return;
+        }
+        if !self.smooth_jobs.is_empty() || self.host.tweeners.is_busy() {
+            self.notify(&t("studio.smoothAlreadyWorkOne"), true);
+            return;
+        }
+        let method = self.smooth_method.with_quick(self.smooth_quick);
+        let timeline_rate = f64::from(self.frame_rate());
+        let timeline = self.timeline();
+        let hidden: HashSet<&str> = timeline
+            .tracks
+            .iter()
+            .filter(|track| !track.visible)
+            .map(|track| track.id.as_str())
+            .collect();
+        let chosen: Option<HashSet<&str>> = (self.selection.len() >= 2)
+            .then(|| self.selection.iter().map(String::as_str).collect());
+        let mut lined: Vec<(f64, String, u32)> = Vec::new();
+        for clip in &timeline.clips {
+            if clip.kind != model::ClipKind::Video
+                || chosen.as_ref().is_some_and(|ids| !ids.contains(clip.id.as_str()))
+                || hidden.contains(clip.track_id.as_str())
+                || self.locked(&clip.track_id)
+                || clip.smooth.as_ref().is_some_and(|link| !link.on)
+            {
+                continue;
+            }
+            let Some(media) = self.smooth_source(clip) else {
+                continue;
+            };
+            if media.width.unwrap_or(0) == 0 || media.height.unwrap_or(0) == 0 {
+                continue;
+            }
+            // A file that does not say is taken at 30, as a single run does.
+            let file_rate = media.frame_rate.unwrap_or(30.0);
+            let Some(frames) = speed::smooth_frames_for(
+                timeline_rate,
+                file_rate,
+                speed::slowest_speed(clip),
+                &host_tween::FACTORS,
+            ) else {
+                continue;
+            };
+            let frames = host_tween::effective_factor(frames, file_rate);
+            // A copy as good is made already: as many frames or more, by the
+            // same method - or by AI in full where AI faster is asked.
+            let made = clip.smooth.as_ref().is_some_and(|link| {
+                let by = Method::parse(&link.method);
+                link.on
+                    && link.factor >= frames
+                    && (by == method || (by == Method::Motion && method == Method::MotionQuick))
+            });
+            if !made {
+                lined.push((clip.start, clip.id.clone(), frames));
+            }
+        }
+        if lined.is_empty() {
+            self.notify(&t("studio.smoothQueueNone"), false);
+            return;
+        }
+        lined.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut ticked_here = HashSet::new();
+        for (_, id, _) in &lined {
+            let unlinked = self.clip(id).is_some_and(|clip| clip.smooth.is_none());
+            if unlinked && self.smooth_ticked.insert(id.clone()) {
+                ticked_here.insert(id.clone());
+            }
+        }
+        let total = lined.len();
+        log::info!(
+            "smooth: queue of {total} clips by {}, frames {:?}",
+            method.name(),
+            lined.iter().map(|(_, _, frames)| *frames).collect::<Vec<_>>()
+        );
+        self.smooth_queue = Some(SmoothQueue {
+            pending: lined.into_iter().map(|(_, id, frames)| (id, frames)).collect(),
+            current: None,
+            total,
+            through: 0,
+            failed: 0,
+            method,
+            ticked_here,
+            _awake: concat_host::awake::Awake::hold(),
+        });
+        self.notify(&tf("studio.smoothQueueStarted", &[&total]), false);
+        self.smooth_queue_next();
+    }
+
+    /// Fork: the queue's Stop - the clip being made, and the rest after it.
+    /// What is made stays made.
+    pub fn clip_smooth_queue_stop(&mut self) {
+        let Some(queue) = self.smooth_queue.take() else {
+            return;
+        };
+        if queue.current.is_some() {
+            self.host.tweeners.cancel();
+        }
+        log::info!(
+            "smooth: queue stopped after {} of {}",
+            queue.through,
+            queue.total
+        );
+        self.untick_unmade(&queue.ticked_here);
+        self.notify(
+            &tf(
+                "studio.smoothQueueStopped",
+                &[&queue.through, &queue.total],
+            ),
+            false,
+        );
+    }
+
+    /// Fork: starts the queue's next clip, past any that are gone or will
+    /// not start; with none left the queue is done.
+    fn smooth_queue_next(&mut self) {
+        loop {
+            let Some(queue) = self.smooth_queue.as_mut() else {
+                return;
+            };
+            let Some((id, frames)) = queue.pending.pop_front() else {
+                self.smooth_queue_finish();
+                return;
+            };
+            let method = queue.method;
+            queue.current = Some(id.clone());
+            if self.smooth_clip_with(&id, frames, method) {
+                return;
+            }
+            // It did not start: through, and a failure if the clip is still
+            // there - one deleted meanwhile is simply not made.
+            let exists = self.clip(&id).is_some();
+            if let Some(queue) = self.smooth_queue.as_mut() {
+                queue.current = None;
+                queue.through += 1;
+                if exists {
+                    queue.failed += 1;
+                }
+            }
+        }
+    }
+
+    /// Fork: a run ended; when it was the queue's, the queue counts it and
+    /// starts the next. A run started from a clip's own button while no
+    /// queue runs passes by.
+    fn smooth_queue_after(&mut self, id: &str, failed: bool) {
+        let Some(queue) = self.smooth_queue.as_mut() else {
+            return;
+        };
+        if queue.current.as_deref() != Some(id) {
+            return;
+        }
+        queue.current = None;
+        queue.through += 1;
+        if failed {
+            queue.failed += 1;
+        }
+        self.smooth_queue_next();
+    }
+
+    /// Fork: the queue is through: says how it went and lets the screen
+    /// rest again.
+    fn smooth_queue_finish(&mut self) {
+        let Some(queue) = self.smooth_queue.take() else {
+            return;
+        };
+        let made = queue.through.saturating_sub(queue.failed);
+        log::info!(
+            "smooth: queue done, {made} of {} made, {} failed",
+            queue.total,
+            queue.failed
+        );
+        self.untick_unmade(&queue.ticked_here);
+        if queue.failed > 0 {
+            self.notify(
+                &tf("studio.smoothQueueDoneFailed", &[&made, &queue.failed]),
+                true,
+            );
+        } else {
+            self.notify(&tf("studio.smoothQueueDone", &[&made]), false);
+        }
+        self.request_preview();
+    }
+
+    /// Fork: takes the tick off again for each clip the queue ticked that
+    /// still has no copy: its section reads as it did before.
+    fn untick_unmade(&mut self, ticked_here: &HashSet<String>) {
+        for id in ticked_here {
+            if self.clip(id).is_none_or(|clip| clip.smooth.is_none()) {
+                self.smooth_ticked.remove(id);
+            }
+        }
+    }
+
+    /// Fork: the queue's line and share done, for the section and the
+    /// phone's top line.
+    pub(super) fn smooth_queue_readout(&self) -> SmoothQueueReadout {
+        let Some(queue) = self.smooth_queue.as_ref() else {
+            return SmoothQueueReadout {
+                active: false,
+                line: String::new(),
+                progress: 0.0,
+            };
+        };
+        let part = queue
+            .current
+            .as_ref()
+            .and_then(|id| self.smooth_jobs.get(id))
+            .map_or(0.0, |(fetching, fraction)| if *fetching { 0.0 } else { *fraction });
+        let progress =
+            ((queue.through as f32 + part) / queue.total.max(1) as f32).clamp(0.0, 1.0);
+        let place = (queue.through + 1).min(queue.total);
+        let percent = (progress * 100.0).floor() as i32;
+        SmoothQueueReadout {
+            active: true,
+            line: tf("smooth.queueLine", &[&place, &queue.total, &percent]),
+            progress,
         }
     }
 }

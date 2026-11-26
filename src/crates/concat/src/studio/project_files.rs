@@ -383,6 +383,7 @@ impl Studio {
         self.enhance_preview = None;
         self.enhance_previewing = None;
         self.enhance_ticked.clear();
+        self.smooth_queue = None;
         self.smooth_jobs.clear();
         self.smooth_ticked.clear();
         self.reverse_jobs.clear();

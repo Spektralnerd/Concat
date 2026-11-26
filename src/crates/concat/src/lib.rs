@@ -1967,6 +1967,12 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_clip_smooth_run(on_window!(|state| {
         state.clip_smooth_run();
     }));
+    editor.on_clip_smooth_queue_all(on_window!(|state| {
+        state.clip_smooth_queue_all();
+    }));
+    editor.on_clip_smooth_queue_stop(on_window!(|state| {
+        state.clip_smooth_queue_stop();
+    }));
     editor.on_transition_remove(on_window!(|state| {
         state.remove_transition();
     }));
