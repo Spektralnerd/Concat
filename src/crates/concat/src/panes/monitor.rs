@@ -139,6 +139,14 @@ pub struct MonitorPane {
     inexact: bool,
     /// An exact frame is out on the [`Lane::Refine`] lane.
     refining: bool,
+    /// Fork: the project epoch the frame out on each lane was asked in. A
+    /// project opened or closed since drops that frame on its way back
+    /// ([`crate::host::spawn_frame`] delivers by epoch), so its answer never
+    /// comes to clear `busy` or `refining`: closing a project while it
+    /// played, or before its first picture was in, left the pane waiting
+    /// for good, and every project after it black until the app restarted.
+    busy_epoch: u64,
+    refining_epoch: u64,
     /// Asks for the exact frame once a scrub has rested; see [`SCRUB_REST`].
     rest: slint::Timer,
 }
@@ -340,6 +348,16 @@ impl MonitorPane {
         if studio.on_start || studio.session.is_none() {
             return;
         }
+        // Fork: a frame asked for in a project since closed is dropped on
+        // its way back - nothing waits on it.
+        let epoch = crate::host::project_epoch();
+        if self.busy && self.busy_epoch != epoch {
+            self.busy = false;
+            self.asked = None;
+        }
+        if self.refining && self.refining_epoch != epoch {
+            self.refining = false;
+        }
         let refine = lane == Lane::Refine;
         // A refine out does not hold up a scrub - the frame it walks to may
         // be most of a second away - but an exact request waits for it, as
@@ -390,8 +408,10 @@ impl MonitorPane {
         let monitor = studio.host.monitor.clone();
         if refine {
             self.refining = true;
+            self.refining_epoch = epoch;
         } else {
             self.busy = true;
+            self.busy_epoch = epoch;
             self.wanted = false;
             self.asked = Some(std::time::Instant::now());
         }
