@@ -1914,6 +1914,9 @@ fn start(project: Option<std::path::PathBuf>, smoke: bool) -> Result<(), slint::
     editor.on_project_zip(on_window!(|state, with_media: bool| {
         state.project_zip_export(with_media);
     }));
+    editor.on_project_zip_own(on_window!(|state| {
+        state.project_zip_export_own();
+    }));
     editor.on_beats_detect(on_window!(|state| {
         state.beats_detect();
     }));

@@ -38,6 +38,9 @@ impl Studio {
             "delete-left" => self.delete_to_playhead(PlayheadSide::Left),
             "delete-right" => self.delete_to_playhead(PlayheadSide::Right),
             "select-all" => self.select_all(),
+            // Fork: the phone's To the top - the selection onto a lane of
+            // its own over every other.
+            "to-top" => self.selection_to_top(),
             // The phone's way out of the clip tools: nothing selected, the
             // way a press on an empty lane leaves it.
             "deselect" => {

@@ -341,6 +341,84 @@ impl Studio {
         })
     }
 
+    /// Fork: the selected clips onto a lane of their own at the very top,
+    /// over every other - a watermark over the picture and its effects
+    /// alike. The top lane takes them when nothing else is on it, else a
+    /// new one is made above it. One step to undo. Clips on a locked lane,
+    /// and sounds, stay where they are; clips that would cover each other on
+    /// one lane are not moved at all.
+    pub fn selection_to_top(&mut self) {
+        let timeline = self.timeline();
+        let moving: Vec<(String, f64, f64, String)> = self
+            .selection
+            .iter()
+            .filter_map(|id| timeline.clips.iter().find(|clip| &clip.id == id))
+            .filter(|clip| {
+                !matches!(clip.kind, model::ClipKind::Audio | model::ClipKind::SoundLayer)
+                    && !self.locked(&clip.track_id)
+            })
+            .map(|clip| {
+                (
+                    clip.id.clone(),
+                    clip.start,
+                    clip.start + clip.duration,
+                    clip.track_id.clone(),
+                )
+            })
+            .collect();
+        if moving.is_empty() {
+            return;
+        }
+        let ids: HashSet<&str> = moving.iter().map(|(id, ..)| id.as_str()).collect();
+        // The top lane, when it can take them: shown, not locked, and
+        // holding nothing but the clips on their way up.
+        let top = timeline
+            .tracks
+            .last()
+            .filter(|track| {
+                track.visible
+                    && !self.locked(&track.id)
+                    && !timeline
+                        .clips
+                        .iter()
+                        .any(|clip| clip.track_id == track.id && !ids.contains(clip.id.as_str()))
+            })
+            .map(|track| track.id.clone());
+        let mut spans: Vec<(f64, f64)> = moving
+            .iter()
+            .map(|(_, start, end, _)| (*start, *end))
+            .collect();
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        if spans.windows(2).any(|pair| pair[1].0 < pair[0].1 - 1e-6) {
+            self.notify(&t("studio.toTopOverlap"), true);
+            return;
+        }
+        if top
+            .as_ref()
+            .is_some_and(|top| moving.iter().all(|(.., track)| track == top))
+        {
+            return;
+        }
+        let gesture = format!("to the top {}", self.revision);
+        let lane = match top {
+            Some(top) => top,
+            None => match self.apply_in(Some(&gesture), Command::AddTrack { bottom: false }) {
+                Some(lane) => lane,
+                None => return,
+            },
+        };
+        log::info!("timeline: {} clips to the top lane {lane}", moving.len());
+        let moves = moving
+            .into_iter()
+            .map(|(clip_id, start, ..)| ClipMove {
+                clip_id,
+                start,
+                track_id: lane.clone(),
+            })
+            .collect();
+        self.apply_in(Some(&gesture), Command::MoveClips { moves });
+    }
+
     /// The selected clip's id, when exactly one is selected.
     /// The clips the inspector's knobs write to: the one selected clip, or
     /// every selected clip when two or more are selected and all of them

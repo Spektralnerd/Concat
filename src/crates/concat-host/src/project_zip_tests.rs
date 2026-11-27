@@ -77,7 +77,7 @@ fn a_project_packed_with_its_media_opens_again_on_its_own_files() {
     let packed = export(
         &document,
         &out,
-        true,
+        &Media::All,
         &mut |done, total| said.push((done, total)),
         &AtomicBool::new(false),
     )
@@ -150,7 +150,7 @@ fn a_project_packed_without_its_media_keeps_their_paths() {
     let packed = export(
         &document,
         &out,
-        false,
+        &Media::None,
         &mut quiet(),
         &AtomicBool::new(false),
     )
@@ -166,6 +166,77 @@ fn a_project_packed_without_its_media_keeps_their_paths() {
 }
 
 #[test]
+fn a_project_packed_with_its_own_files_carries_those_and_names_the_rest() {
+    let here = tempfile::tempdir().unwrap();
+    let project = here.path().join("phone/Concat/Drive");
+    // In the project's folder: a smooth slow motion copy in its cache and
+    // the music its template's ZIP brought in.
+    let smooth = project.join("cache/tween-0123456789abcdef-4x-ai.mp4");
+    let song = project.join("media/drive.wav");
+    // Outside it: the film, used where it lies.
+    let film = here.path().join("phone/Movies/Back to the Future.mkv");
+    write(&smooth, b"in between frames");
+    write(&song, b"synths");
+    write(&film, &vec![3u8; 2 * CHUNK]);
+    let paths: Vec<String> = [&film, &smooth, &song, &film]
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    let document = document(
+        "Drive",
+        &paths.iter().map(String::as_str).collect::<Vec<_>>(),
+        &[],
+    );
+
+    let out = here.path().join("Download/Drive.zip");
+    std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+    let packed = export(
+        &document,
+        &out,
+        &Media::Own(project.clone()),
+        &mut quiet(),
+        &AtomicBool::new(false),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(packed.files, 2);
+    assert_eq!(packed.bytes, 17 + 6);
+    assert_eq!(packed.kept, 1, "the film, used twice, is one file kept");
+    assert!(packed.missing.is_empty());
+    assert_eq!(
+        names(&out),
+        vec![
+            "concat.json",
+            "media/drive.wav",
+            "media/tween-0123456789abcdef-4x-ai.mp4",
+        ]
+    );
+
+    let projects = here.path().join("phone/Concat again");
+    std::fs::create_dir_all(&projects).unwrap();
+    let info = import(&out, &projects, &mut quiet(), &AtomicBool::new(false))
+        .unwrap()
+        .unwrap();
+    let root = PathBuf::from(&info.path);
+    let opened = projects::read_document(&info.path).unwrap().unwrap();
+    let media: Vec<String> = opened["media"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["path"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(media[0], film.to_string_lossy(), "the film keeps its path");
+    assert_eq!(
+        media[1],
+        root.join("media/tween-0123456789abcdef-4x-ai.mp4")
+            .to_string_lossy()
+    );
+    assert_eq!(media[2], root.join("media/drive.wav").to_string_lossy());
+    assert_eq!(media[3], media[0]);
+    assert_eq!(std::fs::read(&media[1]).unwrap(), b"in between frames");
+}
+
+#[test]
 fn a_stopped_export_or_import_leaves_nothing_behind() {
     let here = tempfile::tempdir().unwrap();
     let clip = here.path().join("clip.mp4");
@@ -177,7 +248,7 @@ fn a_stopped_export_or_import_leaves_nothing_behind() {
     let stopped = export(
         &document,
         &out,
-        true,
+        &Media::All,
         &mut |done, _| {
             if done >= CHUNK as u64 {
                 stop.store(true, Ordering::Relaxed);
@@ -189,7 +260,7 @@ fn a_stopped_export_or_import_leaves_nothing_behind() {
     assert!(stopped.is_none());
     assert!(!out.exists() && !partial_path(&out).exists());
 
-    export(&document, &out, true, &mut quiet(), &AtomicBool::new(false))
+    export(&document, &out, &Media::All, &mut quiet(), &AtomicBool::new(false))
         .unwrap()
         .unwrap();
     let projects = here.path().join("projects");

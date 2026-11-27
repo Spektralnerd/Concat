@@ -1530,6 +1530,13 @@ export component PhoneEditor inherits Rectangle {
                 label: I18n.t("phone.duplicate");
                 clicked => { Editor.shortcut("duplicate"); }
             }
+            // Fork: onto a lane of its own over every other - a watermark
+            // over the picture and the effects alike.
+            if root.is-picture || root.is-text || root.is-shape || root.is-layer: ToolItem {
+                glyph: Glyph.arrow-up-to-line;
+                label: I18n.t("phone.toTop");
+                clicked => { Editor.shortcut("to-top"); }
+            }
             if root.is-picture: ToolItem {
                 glyph: Glyph.frame;
                 label: I18n.t("timelinePane.freeze");
@@ -2469,6 +2476,19 @@ export component PhoneEditor inherits Rectangle {
                 clicked => {
                     root.hide();
                     Editor.project-zip(true);
+                }
+            }
+
+            Rectangle { height: 10px; }
+
+            // Fork: the files in the project's folder - smooth slow motion
+            // copies, a template's music - and the films named by path.
+            SheetButton {
+                glyph: Glyph.export;
+                label: I18n.t("projectZip.saveOwn");
+                clicked => {
+                    root.hide();
+                    Editor.project-zip-own();
                 }
             }
 

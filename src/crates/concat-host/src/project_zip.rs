@@ -16,6 +16,11 @@
 //! document pointing at them there. An archive packed without its media
 //! keeps the paths the files had; a project folder zipped by hand opens as
 //! well, its document wherever in the archive it is.
+//!
+//! Between the two, [`Media::Own`] packs only what lies in the project's
+//! own folder - its smooth slow motion copies, the music a template's ZIP
+//! brought in - and names every other file by its path: a film used where
+//! it lies stays there, and the ZIP does not carry it again.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -39,6 +44,40 @@ const FONTS: &str = "fonts";
 /// How much is read and written at a time, and how often progress is said.
 const CHUNK: usize = 1 << 20;
 
+/// Fork: which of the files a document names are packed beside it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Media {
+    /// None of them: each keeps its path.
+    None,
+    /// Those in the project's own folder, `root`, and no others: its smooth
+    /// slow motion copies, the music a template's ZIP brought in. A file
+    /// from anywhere else - a film used where it lies - keeps its path.
+    Own(PathBuf),
+    /// Every media file and font.
+    All,
+}
+
+impl Media {
+    /// Whether the file at `path` goes into the archive.
+    fn packs(&self, path: &Path) -> bool {
+        match self {
+            Media::None => false,
+            Media::Own(root) => within(path, root),
+            Media::All => true,
+        }
+    }
+}
+
+/// Whether `path` lies in the folder `root`: as written, or once both are
+/// resolved, since a phone's storage answers to more than one path.
+fn within(path: &Path, root: &Path) -> bool {
+    path.starts_with(root)
+        || matches!(
+            (std::fs::canonicalize(path), std::fs::canonicalize(root)),
+            (Ok(path), Ok(root)) if path.starts_with(&root)
+        )
+}
+
 /// What an export packed.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Packed {
@@ -49,24 +88,28 @@ pub struct Packed {
     /// The media and fonts the document names that were not there to pack;
     /// their paths are kept as they were.
     pub missing: Vec<String>,
+    /// Fork: the files left out on purpose and named by their path - those
+    /// outside the project's folder, for [`Media::Own`].
+    pub kept: usize,
 }
 
 /// Packs `document` - a project's, as it would be saved - into a ZIP at
-/// `out`, with every media file and font it names when `with_media`.
+/// `out`, with the media files and fonts it names that `media` takes.
 /// `progress` is told the bytes packed and the bytes in all as it goes.
 /// `cancel` stops it between two chunks; None then comes back, and nothing
 /// is left at `out`, which is written in full or not at all.
 pub fn export(
     document: &Value,
     out: &Path,
-    with_media: bool,
+    media: &Media,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<Option<Packed>, String> {
     let mut document = document.clone();
     let mut entries: Vec<(PathBuf, String, u64)> = Vec::new();
     let mut missing = Vec::new();
-    if with_media {
+    let mut kept: HashSet<String> = HashSet::new();
+    if *media != Media::None {
         // Names taken in the archive, lowercase: a phone's SD card and
         // Windows tell no case apart, and two files would be one there.
         let mut taken: HashSet<String> = HashSet::new();
@@ -91,6 +134,10 @@ pub fn export(
                     continue;
                 }
                 let source = PathBuf::from(&path);
+                if !media.packs(&source) {
+                    kept.insert(path);
+                    continue;
+                }
                 let size = match std::fs::metadata(&source) {
                     Ok(meta) if meta.is_file() => meta.len(),
                     _ => {
@@ -122,6 +169,7 @@ pub fn export(
                 files: entries.len(),
                 bytes: total,
                 missing,
+                kept: kept.len(),
             }))
         }
         Ok(false) => {
@@ -140,13 +188,13 @@ pub fn export(
 pub fn export_folder(
     project: &Path,
     out: &Path,
-    with_media: bool,
+    media: &Media,
     progress: &mut dyn FnMut(u64, u64),
     cancel: &AtomicBool,
 ) -> Result<Option<Packed>, String> {
     let document = projects::read_document(&project.to_string_lossy())?
         .ok_or_else(|| format!("{} holds no project yet", project.display()))?;
-    export(&document, out, with_media, progress, cancel)
+    export(&document, out, media, progress, cancel)
 }
 
 /// Where an export is written before it is whole: beside `out`.

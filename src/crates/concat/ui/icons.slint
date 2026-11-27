@@ -180,6 +180,8 @@ export enum Glyph {
     circle-play,
     bug,
     arrow-up-right,
+    /// Fork: a clip onto a lane of its own at the very top
+    arrow-up-to-line,
     /// two marks of other people's, filled, from Simple Icons (CC0): the
     /// repository's host and the community's chat
     github,
@@ -493,6 +495,12 @@ export component Icon inherits Rectangle {
         size: root.size; tint: root.tint; weight: root.weight;
         commands: "M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9"
             + "a.7.7 0 0 1-.572 1.1Z M3 14h7v7H3z M14 17.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0";
+    }
+
+    // lucide/arrow-up-to-line
+    if root.glyph == Glyph.arrow-up-to-line: Stroked {
+        size: root.size; tint: root.tint; weight: root.weight;
+        commands: "M5 3h14M18 13l-6-6-6 6M12 7v14";
     }
 
     // lucide/chevron-up

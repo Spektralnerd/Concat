@@ -12,11 +12,21 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
+use concat_host::project_zip::Media;
+
 use super::*;
 
 /// How often the card is moved on: a gigabyte goes by in a thousand
 /// chunks, and the window need not hear of every one.
 const CARD_EVERY: Duration = Duration::from_millis(200);
+
+/// Fork: which files a project's ZIP takes along, as its button says.
+#[derive(Clone, Copy)]
+enum Pick {
+    All,
+    Own,
+    None,
+}
 
 /// A progress report that says so at most every [`CARD_EVERY`], and at the
 /// end.
@@ -37,18 +47,35 @@ impl Studio {
     /// uses when `with_media`, else its document alone. On a phone it ends
     /// in Download/Concat; a desk asks where.
     pub fn project_zip_export(&mut self, with_media: bool) {
+        self.project_zip_export_as(if with_media { Pick::All } else { Pick::None });
+    }
+
+    /// Fork: the open project as a ZIP with the files in its own folder -
+    /// its smooth slow motion copies, a template's music - and every other
+    /// file named by its path: a film used where it lies is not carried
+    /// again.
+    pub fn project_zip_export_own(&mut self) {
+        self.project_zip_export_as(Pick::Own);
+    }
+
+    fn project_zip_export_as(&mut self, pick: Pick) {
         let Some(session) = self.session.as_ref() else {
             return;
         };
         let document = session.document();
         let root = PathBuf::from(session.path());
+        let media = match pick {
+            Pick::All => Media::All,
+            Pick::Own => Media::Own(root.clone()),
+            Pick::None => Media::None,
+        };
         let name = self.project_name.clone();
         let file_name = format!("{}.zip", concat_host::projects::folder_name(&name));
         if cfg!(any(target_os = "android", target_os = "ios")) {
             // Beside the project folders, then handed to the phone's files.
             let folder = root.parent().map(Path::to_path_buf).unwrap_or(root);
             let out = folder.join(&file_name);
-            self.pack(document, out, with_media, name, true);
+            self.pack(document, out, media, name, true);
             return;
         }
         let title = t("projectZip.dialogTitle");
@@ -76,7 +103,7 @@ impl Studio {
                     },
                 )
             },
-            move |studio, _, _, out| studio.pack(document, out, with_media, name, false),
+            move |studio, _, _, out| studio.pack(document, out, media, name, false),
         );
     }
 
@@ -86,7 +113,7 @@ impl Studio {
         &mut self,
         document: serde_json::Value,
         out: PathBuf,
-        with_media: bool,
+        media: Media,
         name: String,
         hand_over: bool,
     ) {
@@ -97,10 +124,10 @@ impl Studio {
         }
         log::info!(
             "project zip: packing {name} {}",
-            if with_media {
-                "with its media"
-            } else {
-                "without its media"
+            match media {
+                Media::All => "with its media",
+                Media::Own(_) => "with the files in its folder",
+                Media::None => "without its media",
             }
         );
         let mut progress = card(tf("projectZip.packing", &[&name]));
@@ -111,7 +138,7 @@ impl Studio {
                 let packed = concat_host::project_zip::export(
                     &document,
                     &out,
-                    with_media,
+                    &media,
                     &mut progress,
                     &cancel,
                 );
@@ -125,10 +152,15 @@ impl Studio {
                 match packed {
                     Ok(Some(packed)) => {
                         log::info!(
-                            "project zip: {} files, {} bytes packed in {}{}",
+                            "project zip: {} files, {} bytes packed in {}{}{}",
                             packed.files,
                             packed.bytes,
                             concat_log::span(began.elapsed()),
+                            if packed.kept == 0 {
+                                String::new()
+                            } else {
+                                format!("; {} from outside its folder named by path", packed.kept)
+                            },
                             if packed.missing.is_empty() {
                                 String::new()
                             } else {
@@ -136,11 +168,14 @@ impl Studio {
                             }
                         );
                         let missing = packed.missing.len();
+                        let kept = packed.kept;
                         let say = move |studio: &mut Studio, place: &str| {
-                            let said = if missing == 0 {
-                                tf("projectZip.saved", &[&place])
-                            } else {
+                            let said = if missing > 0 {
                                 tf("projectZip.savedMissing", &[&place, &missing])
+                            } else if kept > 0 {
+                                tf("projectZip.savedKept", &[&place, &kept])
+                            } else {
+                                tf("projectZip.saved", &[&place])
                             };
                             studio.notify(&said, false);
                         };
